@@ -83,3 +83,24 @@ Cada tarefa mantém histórico de alterações e comentários com autor e data. 
 Em Equipe, **Desativar** bloqueia novas requisições das sessões existentes, preservando tarefas e histórico. **Redefinir acesso** invalida a senha e os links anteriores e gera outro convite. O estagiário também pode alterar a própria senha em Configurações; as outras sessões são invalidadas. Senhas individuais são armazenadas com PBKDF2-HMAC-SHA256 e salt aleatório; o banco guarda apenas o hash dos convites.
 
 A migração 0004 é aditiva: cria as tabelas de pessoas, tarefas, eventos e comentários. Ela é aplicada no build da Vercel, preserva a carteira atual e não exige novas variáveis de ambiente. Contas individuais e convites estão habilitados na versão **Vercel**. O painel Sites e o coletor local continuam com seu mecanismo de acesso existente. O backup JSON das publicações e o Excel não incluem pessoas, tarefas nem comentários; esses dados exigem backup do banco.
+
+
+## Clientes e WhatsApp (v5)
+
+A aba **Clientes** reúne contatos com nome, WhatsApp, e-mail e observações internas. Um cliente pode ter vários processos, e um processo pode ter vários clientes. Cadastre o contato e vincule os processos pela ficha ou pela seção **Clientes deste processo** no histórico. Os nomes dos clientes vinculados aparecem também na lista principal dos processos. A busca dos processos reconhece o nome do cliente cadastrado.
+
+Em **Todos os processos**, consulte todo o acervo capturado da seleção e filtre por **Sem cliente vinculado** para completar o cadastro. Os nomes estruturados da fonte ficam visíveis como referência; nenhum destinatário ou parte contrária é cadastrado automaticamente como cliente. Confirme o nome correto ao criar o vínculo. Os filtros de OAB e tribunal continuam valendo para a carteira.
+
+Em **Avisar clientes**, as publicações capturadas sem envio informado aparecem para cada cliente vinculado. O histórico já existente também aparece até que a equipe registre o envio; preparar uma mensagem não remove a pendência. A fila considera o identificador da publicação, não cria um novo aviso para cada reconciliação do mesmo registro e não substitui a coleta do DJEN.
+
+Use **Compartilhar no WhatsApp** em uma publicação ou **Preparar WhatsApp** na aba Clientes. Confira o destinatário, telefone e texto; gere o link e clique em **Abrir WhatsApp**. A mensagem contém nome do cliente, CNJ, tribunal, data e trecho do teor, com a certidão oficial quando disponível. Publicações canceladas são identificadas no texto. O conteúdo pode ser editado antes de abrir a conversa. Nenhum resumo ou interpretação jurídica é gerado por IA.
+
+Esta integração usa o link oficial **wa.me** com texto preenchido. Você conclui o envio no WhatsApp usando sua própria conta. O site não envia mensagens sozinho, não precisa de token da API da Meta e não confirma entrega ou leitura. Depois de enviar, clique em **Já enviei · registrar envio**. O histórico guarda o texto e o telefone usados, autor, data e eventual confirmação manual. A equipe também pode registrar o envio pela ficha do cliente.
+
+O administrador cadastra, edita, arquiva e vincula contatos. Estagiários acessam somente contatos vinculados aos processos atribuídos a eles, sem as observações gerais privadas do cliente. Podem preparar mensagens das publicações desses processos e informar o envio. A API verifica as permissões, o vínculo e a versão do contato antes de gerar o link.
+
+Para números brasileiros, informe DDD e telefone; o sistema acrescenta 55. Para outros países, use + e o código internacional. O telefone é validado quanto ao formato; a existência de uma conta no WhatsApp é verificada ao abrir a conversa.
+
+A migração **0005** acrescenta clientes, vínculos e registros de mensagens. Preserva publicações, equipe e tarefas e não exige novas variáveis de ambiente. Contatos e mensagens ficam no banco entre deploys. O Excel e o JSON de publicações não contêm esses cadastros nem registros de envio: faça backup do banco para preservá-los.
+
+Referência oficial da integração: https://faq.whatsapp.com/5913398998672934

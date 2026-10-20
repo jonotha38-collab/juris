@@ -3,7 +3,7 @@ import {inviteToken,digestToken} from './member-passwords.mjs';
 import {partiesOf} from '../public/parties.mjs';
 const stamp=()=>new Date().toISOString();
 export const ADMIN=Object.freeze({id:'admin',role:'admin',name:'Administrador do escritório'});
-export function permissionsFor(actor){const admin=actor.role==='admin';return {admin,canManageTeam:admin,canAssignTasks:admin,canCollect:admin,canExport:admin,canEditProcess:admin,canMarkRead:admin};}
+export function permissionsFor(actor){const admin=actor.role==='admin';return {admin,canManageTeam:admin,canAssignTasks:admin,canCollect:admin,canExport:admin,canEditProcess:admin,canMarkRead:admin,canManageClients:admin,canSharePublications:true};}
 function field(value,name,max,required=false){if(typeof value!=='string'||value.trim().length>max||(required&&!value.trim()))throw new AppError(`Confira ${name}${max?' (até '+max+' caracteres)':''}.`);return value.trim();}
 function validateDate(value){if(value===null||value==='')return null;if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value))||new Date(value+'T12:00:00Z').toISOString().slice(0,10)!==value)throw new AppError('Informe uma data válida para a tarefa.');return value;}
 export function createCollaboration(db,{owner,actor=ADMIN,mode='hosted',resolveScope}){

@@ -4,6 +4,7 @@ export const UFS = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN 
 import {AppError} from './errors.mjs';
 export {AppError} from './errors.mjs';
 import {createCollaboration,ADMIN,permissionsFor} from './collaboration.mjs';
+import {createClients} from './clients.mjs';
 const now=()=>new Date().toISOString();
 export const day=(value=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(value);
 export function addDays(d,n){const t=new Date(d+'T12:00:00Z');t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10);}
@@ -36,7 +37,7 @@ async function scope(owner,url,listFilters=false){
   if(tribunal){where+=' AND tribunal=?';params.push(tribunal);}
   if(listFilters){
     const search=(url.searchParams.get('q')||'').trim().slice(0,150);
-    if(search){where+=" AND (cnj LIKE ? OR text LIKE ? OR organ LIKE ? OR json_extract(raw, '$.destinatarios') LIKE ?)";params.push(...Array(4).fill('%'+search+'%'));}
+    if(search){where+=" AND (cnj LIKE ? OR text LIKE ? OR organ LIKE ? OR json_extract(raw, '$.destinatarios') LIKE ? OR EXISTS (SELECT 1 FROM client_processes cp JOIN clients c ON c.owner=cp.owner AND c.id=cp.client_id WHERE cp.owner=publications.owner AND cp.cnj=publications.cnj AND c.archived=0 AND c.name LIKE ?))";params.push(...Array(5).fill('%'+search+'%'));}
     if(url.searchParams.get('unread')==='1')where+=' AND seen=0';
     if(url.searchParams.get('favorite')==='1')where+=' AND EXISTS (SELECT 1 FROM process_meta pm WHERE pm.owner=publications.owner AND pm.cnj=publications.cnj AND pm.favorite=1)';
     const stage=url.searchParams.get('stage')||'';
@@ -46,14 +47,15 @@ async function scope(owner,url,listFilters=false){
 }
 function withParties({raw,...row}){let source={};try{source=JSON.parse(raw)}catch{}return {...row,parties:partiesOf(source)};}
 async function attachMeta(rows,owner){
-  if(!rows.length)return rows;const cnjs=[...new Set(rows.map(x=>x.cnj))],meta=[],linked=[];const byPublication=rows.every(x=>x.id!==undefined);
+  if(!rows.length)return rows;const cnjs=[...new Set(rows.map(x=>x.cnj))],meta=[],linked=[],clients=[];const byPublication=rows.every(x=>x.id!==undefined);
   for(let i=0;i<cnjs.length;i+=80){const chunk=cnjs.slice(i,i+80),marks=chunk.map(()=>'?').join(',');
+    clients.push(...await all(`SELECT cp.cnj,c.id,c.name FROM client_processes cp JOIN clients c ON c.owner=cp.owner AND c.id=cp.client_id WHERE cp.owner=? AND cp.cnj IN (${marks}) AND c.archived=0 ORDER BY c.name`,owner,...chunk));
     meta.push(...await all(`SELECT cnj,favorite,note,stage,updated FROM process_meta WHERE owner=? AND cnj IN (${marks})`,owner,...chunk));
     if(!byPublication)linked.push(...await all(`SELECT DISTINCT p.cnj,m.id,m.oab,m.uf,m.label FROM publications p JOIN links l ON l.owner=p.owner AND l.publication_id=p.id JOIN monitors m ON m.owner=l.owner AND m.id=l.monitor_id WHERE p.owner=? AND p.cnj IN (${marks}) ORDER BY m.uf,m.oab`,owner,...chunk));
   }
   if(byPublication){const idToCnj=new Map(rows.map(x=>[String(x.id),x.cnj]));const ids=[...idToCnj.keys()];for(let i=0;i<ids.length;i+=80){const chunk=ids.slice(i,i+80);const refs=await all(`SELECT l.publication_id,m.id,m.oab,m.uf,m.label FROM links l JOIN monitors m ON m.owner=l.owner AND m.id=l.monitor_id WHERE l.owner=? AND l.publication_id IN (${chunk.map(()=>'?').join(',')}) ORDER BY m.uf,m.oab`,owner,...chunk);linked.push(...refs.map(r=>({...r,cnj:idToCnj.get(String(r.publication_id))})));}}
   const byCnj=new Map(meta.map(x=>[x.cnj,x]));
-  return rows.map(x=>{const refs=linked.filter(r=>r.cnj===x.cnj&&(!x.id||String(r.publication_id)===String(x.id)));const unique=new Map(refs.map(r=>[r.id,{id:r.id,oab:r.oab,uf:r.uf,label:r.label||''}]));return {...x,meta:byCnj.get(x.cnj)||{favorite:0,note:'',stage:'active',updated:null},oabs:[...unique.values()]};});
+  return rows.map(x=>{const refs=linked.filter(r=>r.cnj===x.cnj&&(!x.id||String(r.publication_id)===String(x.id)));const unique=new Map(refs.map(r=>[r.id,{id:r.id,oab:r.oab,uf:r.uf,label:r.label||''}]));return {...x,clients:clients.filter(c=>c.cnj===x.cnj).map(({id,name})=>({id,name})),meta:byCnj.get(x.cnj)||{favorite:0,note:'',stage:'active',updated:null},oabs:[...unique.values()]};});
 }
 async function monitorsFor(owner){return all(`SELECT m.*,COUNT(DISTINCT p.cnj) processes,COUNT(p.id) publications,COALESCE(SUM(CASE WHEN p.id IS NOT NULL AND p.seen=0 THEN 1 ELSE 0 END),0) unread FROM monitors m LEFT JOIN links l ON l.owner=m.owner AND l.monitor_id=m.id LEFT JOIN publications p ON p.owner=l.owner AND p.id=l.publication_id ${actor.role!=='admin'?'AND EXISTS (SELECT 1 FROM tasks acl WHERE acl.owner=p.owner AND acl.cnj=p.cnj AND acl.assignee_id=?)':''} WHERE m.owner=? GROUP BY m.id ${actor.role!=='admin'?'HAVING COUNT(p.id)>0':''} ORDER BY m.uf,m.oab`,...(actor.role!=='admin'?[actor.id]:[]),owner);}
 async function tribunalsFor(owner,url){const unfiltered=new URL(url);unfiltered.searchParams.delete('tribunal');const s=await scope(owner,unfiltered);return all(`SELECT tribunal,COUNT(DISTINCT cnj) processes,COUNT(*) publications,COALESCE(SUM(CASE WHEN seen=0 THEN 1 ELSE 0 END),0) unread,MAX(date) last_date FROM publications WHERE ${s.where} GROUP BY tribunal ORDER BY processes DESC,tribunal`,...s.params);}
@@ -73,10 +75,12 @@ async function activity(owner,url){
   const totals=await first(`SELECT COUNT(*) publications,COUNT(DISTINCT cnj) processes,COALESCE(SUM(CASE WHEN seen=0 THEN 1 ELSE 0 END),0) unread FROM publications WHERE ${s.where} AND canceled=0 AND date BETWEEN ? AND ?`,...s.params,w.start,w.end);
   return {window:w,rows:await attachMeta(rows.map(withParties),owner),timeline,totals,metric:'Publicações não canceladas capturadas no DJEN. Não representa todas as movimentações do tribunal.'};
 }
+const clientsFor=owner=>createClients(db,{owner,actor,resolveScope:url=>scope(owner,url)});
 const collaborationFor=owner=>createCollaboration(db,{owner,actor,mode,resolveScope:url=>scope(owner,url)});
 async function handle(request,owner){
   const url=new URL(request.url),path=url.pathname.replace(/^\/api\/?/,'').split('/').filter(Boolean).map(decodeURIComponent),method=request.method;let body={};
   if(!['GET','HEAD'].includes(method)){if(request.headers.get('origin')&&request.headers.get('origin')!==url.origin)throw new AppError('Origem não autorizada.',403);const raw=await request.text();if(raw.length>2000000)throw new AppError('Arquivo muito grande. Importe até 2 MB por lote.',413);try{body=JSON.parse(raw||'{}');}catch{throw new AppError('JSON inválido.');}if(!body||typeof body!=='object'||Array.isArray(body))throw new AppError('Informe um objeto JSON válido.');}
+  const clientsResult=await clientsFor(owner).handle(path,method,body,url);if(clientsResult!==undefined)return clientsResult;
   const collaborationResult=await collaborationFor(owner).handle(path,method,body,url);if(collaborationResult!==undefined)return collaborationResult;
   if(actor.role!=='admin'&&['meta','search','jobs','monitors','read','import','export'].includes(path[0]))throw new AppError('Esta ação é permitida apenas ao administrador.',403);
   if(path[0]==='state'&&method==='GET')return state(owner,url);
