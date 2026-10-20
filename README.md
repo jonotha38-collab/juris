@@ -132,12 +132,16 @@ Em Configurações, **Cadastros importados em JSON** baixa os campos da planilha
 A migração aditiva **0006** cria o catálogo e suas relações de OAB, sem alterar publicações existentes ou exigir novas variáveis. Os testes automatizados usam somente registros fictícios, inclusive um lote de 720 processos, sem incluir a planilha real no repositório.
 
 
-## Processos recentes na busca por OAB
+## Busca por OAB e verificação da atividade por processo
 
-A coleta automática por OAB considera somente publicações com data posterior ao aniversário de dois anos da data atual, usando o calendário de São Paulo. Um processo com última publicação não cancelada há dois anos ou mais sai dos resultados automáticos. Uma publicação recente do mesmo CNJ faz o processo reaparecer. Publicações futuras ou datas inválidas recebidas na coleta não qualificam atividade.
+As datas da busca são livres, inclusive anteriores a dois anos. O período escolhido localiza publicações vinculadas à OAB. Para cada CNJ encontrado, uma etapa separada verifica a existência de publicação não cancelada nos últimos dois anos, considerando a data atual de São Paulo. O limite de dois anos vale para a atividade do processo, não para as datas disponíveis no formulário.
 
-O formulário abre com o intervalo de dois anos e permite reduzi-lo. A API limita inícios antigos ao primeiro dia elegível e rejeita períodos inteiramente vencidos. Buscas antigas já iniciadas são ajustadas ao retomar; períodos totalmente antigos terminam sem consultar a fonte. A paginação usa o tamanho original da página, mesmo quando itens fora do intervalo são ignorados.
+Por exemplo, uma busca em 2018 pode encontrar um processo que também teve publicação em 2026: ele entra na carteira com seus registros antigos encontrados e a evidência recente. Um processo cuja última publicação é de dois anos ou mais fica fora da inclusão automática. A verificação se refere às publicações do DJEN, sem afirmar cobertura de todos os movimentos do tribunal.
 
-Os filtros de carteira, OAB, tribunal, publicações e exportação consideram a atividade recente do processo, preservando o histórico anterior dos casos que continuam elegíveis. Registros já salvos permanecem no banco e na ficha direta. Tarefas criadas manualmente também são preservadas. Cadastros importados explicitamente por planilha continuam disponíveis como cadastro manual, inclusive quando a planilha não contém uma data recente verificável.
+Publicações recentes já conhecidas ou presentes na página consultada dispensam nova consulta de atividade. Quando necessário, a API consulta o mesmo CNJ independentemente da OAB e do período histórico escolhido. Só registros com o CNJ exato são aceitos; publicações canceladas, futuras ou sem data válida não comprovam atividade. Uma consulta negativa pode ser reutilizada no mesmo dia, mas uma nova evidência de atividade sempre prevalece.
 
-O critério é a publicação pública não cancelada capturada no DJEN. Ausência de publicação recente nessa fonte não comprova ausência de todas as movimentações no tribunal. A regra não determina arquivamento ou situação jurídica. A migração 0007 acrescenta um índice de consulta, sem apagar dados ou exigir novas variáveis de ambiente.
+Cada página descoberta fica em uma fila interna e é verificada de forma retomável. Registros pendentes não aparecem como processos nem publicações no painel. A verificação faz no máximo uma página de consulta por CNJ em cada etapa. Falhas, HTTP 429 e interrupções preservam a fila; nenhuma falha é interpretada como ausência de atividade. A paginação da descoberta avança somente depois que todos os candidatos da página foram decididos, usando a quantidade original de registros da fonte.
+
+Casos elegíveis mantêm o histórico anterior capturado. Registros previamente salvos e tarefas manuais são preservados; o catálogo importado explicitamente por planilha continua separado da coleta automática. Datas antigas seguem disponíveis para futuras buscas.
+
+A migração aditiva 0008 cria a fila de candidatos, o checkpoint da página e o cache diário de verificações negativas. Não exige novas variáveis de ambiente. A 0007 continua fornecendo o índice de atividade por CNJ. As consultas não usam tokens de IA.
