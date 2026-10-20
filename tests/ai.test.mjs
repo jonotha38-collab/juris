@@ -202,7 +202,7 @@ test("the daily token reservation is shared atomically across concurrent case an
  await api('import','POST',{oab:'54321',uf:'RJ',start:day(),end:day(),items:[{'Número':other,'Título':'Outro processo','Tribunal':'TJRJ'}]});
  await engine.saveItems('office',monitor.monitorId,[source(2,text,{numero_processo:other,siglaTribunal:'TJRJ'})]);
  const reservation=new TextEncoder().encode(JSON.stringify(buildAIRequest([{ref:'1',id:'1',source_version:1,tribunal:'TJSP',date:day(),text,start:0,end:text.length,length:text.length}],[]))).byteLength+5024;
- const config=await api('ai/config');await api('ai/config','PUT',{version:config.version,enabled:true,automatic:true,daily_limit:reservation+1});
+ const config=await api('ai/config');await api('ai/config','PUT',{version:config.version,enabled:true,automatic:true,daily_limit:reservation+300});
  let release;const gate=new Promise(resolve=>{release=resolve});
  setProvider(async()=>{await gate;return Response.json({status:'completed',usage:{input_tokens:140,output_tokens:110},output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({summary:'Lote conferido pela IA.',suggestions:[]})}]}]});});
  const running=api('ai/process/'+CNJ,'POST',{});

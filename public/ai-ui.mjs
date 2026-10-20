@@ -9,7 +9,7 @@ export function createAIUI({api,notice,refresh,context,navigate,getCase}){
   $('#ai-run-batch').disabled=working||!settings?.configured||!settings?.enabled;$('#ai-stop').hidden=!working;
   $('#ai-run-batch').textContent=working?'Analisando publicações…':'Analisar carteira';
   $('#ai-section').classList.toggle('is-analyzing',working);
-  $('#case-ai-analyze').textContent=workingCase===getCase().cnj?'Pausar após este lote':'Analisar com IA';
+  $('#case-ai-analyze').textContent=working&&workingCase===getCase().cnj?'Pausar após este lote':'Analisar com IA';
  }
  async function load(){
   if(!admin()||view!=='ai')return;const revision=++generation;$('#ai-list').setAttribute('aria-busy','true');
