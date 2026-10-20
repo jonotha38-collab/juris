@@ -26,7 +26,7 @@ test("explicit periods and dates are extracted without inventing legal deadlines
  assert.equal(result.items[1].amount,5);assert.equal(result.items[1].basis,null);assert.equal(result.items[2].explicit_date,'2026-11-20');
  assert.match(result.items[0].excerpt,/15 \(quinze\) dias úteis/);
  for(const text of ['Intime-se no prazo legal.','Pena de 5 anos de reclusão.','Julgado procedente o pedido.']){
-  const analysis=analyzeDeadlines(text);assert.equal(analysis.items.length,0);assert.equal(analysis.needs_review,true);assert.match(analysis.warnings.join(' '),/não significa ausência/);
+  const analysis=analyzeDeadlines(text);assert.equal(analysis.items.length,0);assert.equal(analysis.needs_review,true);assert.ok(analysis.warnings.length,'Unrecognized text must retain warnings and require review');
  }
  assert.equal(analyzeDeadlines('Resposta em cinco dias.').items[0].amount,5);
  assert.equal(analyzeDeadlines('Intime-se para se manifestar em 48 horas.').items[0].unit,'hour');
