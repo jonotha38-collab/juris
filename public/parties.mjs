@@ -16,7 +16,7 @@ export function partiesOf(publication = {}) {
   const short = list => list[0] + (list.length > 1 ? ` e mais ${list.length - 1}` : '');
   const title = groups.active.length && groups.passive.length
     ? `${short(groups.active)} × ${short(groups.passive)}`
-    : names.length ? short(names) : 'Nome não informado pela fonte';
+    : names.length ? short(names) : typeof publication._juris_import?.title==='string'&&publication._juris_import.title ? publication._juris_import.title : 'Nome não informado pela fonte';
   return { ...groups, names, title };
 }
 export const formatCnj = value => String(value || '').replace(/\D/g, '').replace(/^(\d{7})(\d{2})(\d{4})(\d)(\d{2})(\d{4})$/, '$1-$2.$3.$4.$5.$6');
