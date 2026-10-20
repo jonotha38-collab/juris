@@ -1,0 +1,4 @@
+import {DatabaseSync} from 'node:sqlite';
+export function openDatabase(path){const sqlite=new DatabaseSync(path);sqlite.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');
+function prepare(sql){return {bind(...values){return {async all(){return {results:sqlite.prepare(sql).all(...values)}},async first(){return sqlite.prepare(sql).get(...values)||null},async run(){const r=sqlite.prepare(sql).run(...values);return {meta:{changes:Number(r.changes)}}},_sql:sql,_values:values};}}}
+return {prepare,async batch(items){sqlite.exec('BEGIN IMMEDIATE');try{const results=[];for(const item of items){const r=sqlite.prepare(item._sql).run(...item._values);results.push({meta:{changes:Number(r.changes)}});}sqlite.exec('COMMIT');return results;}catch(e){sqlite.exec('ROLLBACK');throw e;}},exec:s=>sqlite.exec(s),close:()=>sqlite.close()};}

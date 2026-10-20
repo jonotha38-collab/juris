@@ -1,0 +1,20 @@
+import http from 'node:http';
+import {readFileSync,existsSync,mkdirSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import {dirname,resolve,extname} from 'node:path';
+import {createEngine,AppError} from './core/engine.mjs';
+import {openDatabase} from './sqlite.mjs';
+const root=dirname(fileURLToPath(import.meta.url));mkdirSync(resolve(root,'data'),{recursive:true});
+const db=openDatabase(resolve(root,'data/juris.sqlite'));
+db.exec('CREATE TABLE IF NOT EXISTS migrations(name TEXT PRIMARY KEY);');
+const {readdirSync}=await import('node:fs');for(const filename of readdirSync(resolve(root,'migrations')).filter(x=>x.endsWith('.sql')).sort()){if(!(await db.prepare('SELECT name FROM migrations WHERE name=?').bind(filename).first())){db.exec('BEGIN IMMEDIATE');try{db.exec(readFileSync(resolve(root,'migrations',filename),'utf8'));await db.prepare('INSERT INTO migrations(name) VALUES(?)').bind(filename).run();db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}}
+const engine=createEngine(db,{mode:'local'});const host=process.env.HOST||'127.0.0.1',port=Number(process.env.PORT||8787);if(!['127.0.0.1','localhost','::1'].includes(host)&&!process.env.ACCESS_TOKEN)throw new Error('Para acesso remoto, configure ACCESS_TOKEN e HTTPS em um proxy reverso.');
+const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.zip':'application/zip'};
+const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,`http://${req.headers.host}`);if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)&&host==='127.0.0.1')throw new AppError('Host não autorizado.',403);
+if(process.env.ACCESS_TOKEN){const authorization=req.headers.authorization||'';if(authorization!==`Bearer ${process.env.ACCESS_TOKEN}`){res.writeHead(401,{'Content-Type':'application/json'});res.end(JSON.stringify({error:'Use um proxy autenticado que forneça o Bearer ACCESS_TOKEN ao backend.'}));return;}}
+if(url.pathname.startsWith('/api/')){if(req.headers.origin&&req.headers.origin!==url.origin)throw new AppError('Origem não autorizada.',403);let size=0,chunks=[];for await(const chunk of req){size+=chunk.length;if(size>2000000)throw new AppError('Requisição maior que 2 MB.',413);chunks.push(chunk)}const method=req.method;const request=new Request(url,{method,headers:{...req.headers},body:['GET','HEAD'].includes(method)?undefined:Buffer.concat(chunks)});const data=await engine.handle(request,'local');res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data));return;}
+if(req.method!=='GET'&&req.method!=='HEAD')throw new AppError('Método não permitido.',405);const name=url.pathname==='/'?'painel.html':decodeURIComponent(url.pathname).replace(/^\//,'');const base=resolve(root,'public'),path=resolve(base,name);if(!path.startsWith(base+'/'))throw new AppError('Arquivo não encontrado.',404);if(!existsSync(path))throw new AppError('Arquivo não encontrado.',404);const bytes=readFileSync(path);res.writeHead(200,{'Content-Type':types[extname(path)]||'application/octet-stream','X-Content-Type-Options':'nosniff'});res.end(req.method==='HEAD'?undefined:bytes);
+}catch(e){res.writeHead(e instanceof AppError?e.status:500,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify({error:e instanceof AppError?e.message:'Falha interna. Consulte os logs.'}));if(!(e instanceof AppError))console.error(e);}});
+let busy=false;const timer=setInterval(async()=>{if(busy)return;busy=true;try{await engine.tick()}catch(e){console.error('Falha na coleta:',e.message)}finally{busy=false}},5000);
+server.listen(port,host,()=>{console.log(`Juris disponível em http://${host}:${port}`);console.log('Deixe este processo ligado para coletas a cada 6 horas. Interrompa com Ctrl+C.');});
+for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{clearInterval(timer);server.close(()=>{db.close();process.exit(0)})});
