@@ -113,3 +113,16 @@ test('invalid mixed records fail before creating monitors or importing any case'
  assert.equal((await client.execute('SELECT COUNT(*) n FROM process_catalog')).rows[0].n,0);
  assert.equal((await client.execute('SELECT COUNT(*) n FROM monitors')).rows[0].n,0);
 });
+
+test('a later DJEN publication joins the imported case and creates only a real client notification',async t=>{
+ const {client,api}=await setup();t.after(()=>client.close());
+ await api('import','POST',body([record(9)]));
+ await api('clients','POST',{name:'Cliente confirmado',whatsapp:'11999990000',cnj:cnj(9)});
+ assert.equal((await api('clients/summary')).pending,0);
+ await api('import','POST',body([{id:90,numero_processo:cnj(9),siglaTribunal:'SEEU',data_disponibilizacao:day(),texto:'Novo texto oficial'}]));
+ const state=await api('state?view=processes');assert.equal(state.total,1);assert.equal(state.rows[0].total,1);
+ assert.equal(state.rows[0].tribunal,'SEEU');assert.equal(state.stats.unread,1);
+ assert.equal((await api('clients/summary')).pending,1);
+ assert.equal((await api('clients/updates')).rows[0].text,'Novo texto oficial');
+ assert.equal((await api('process/'+cnj(9))).catalog.title,'Pessoa de teste 9');
+});
