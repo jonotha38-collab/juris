@@ -1,4 +1,4 @@
-name: Process import checks
+name: Juris checks
 on:
   pull_request:
   push:
@@ -16,7 +16,9 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Install DOM test dependency
+        run: npm install --no-save --package-lock=false jsdom@26.1.0
       - name: Check JavaScript syntax
-        run: node --check core/engine.mjs && node --check core/clients.mjs && node --check core/collaboration.mjs && node --check public/juris.js && node --check public/import-ui.mjs
-      - name: Test case imports and access permissions
+        run: node --check core/engine.mjs && node --check core/clients.mjs && node --check core/collaboration.mjs && node --check public/juris.js && node --check public/import-ui.mjs && node --check core/pending.mjs && node --check public/pending-ui.mjs && node --check public/collaboration-ui.mjs
+      - name: Test imports, pending work, dates and access permissions
         run: node --test tests/*.test.mjs

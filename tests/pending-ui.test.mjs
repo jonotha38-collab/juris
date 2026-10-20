@@ -1,0 +1,84 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {JSDOM} from 'jsdom';
+import {createClient} from '@libsql/client';
+import {adaptClient} from '../lib/database.mjs';
+import {migrate} from '../scripts/migrate.mjs';
+import {createEngine,day,addDays} from '../core/engine.mjs';
+const cnj='00000000000000000001';
+test('the actual page supports pending work, explicit publication reading and task creation from a publication',async t=>{
+ const client=createClient({url:'file::memory:'}),db=adaptClient(client);await migrate(client);
+ const engine=createEngine(db,{mode:'vercel'});
+ const call=(path,method='GET',body)=>engine.handle(new Request('https://juris.example/api/'+path,{method,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})}),'office');
+ const monitor=await call('import','POST',{oab:'12345',uf:'SP',start:day(),end:day(),items:[{'Número':cnj,'Título':'Caso de teste','Tribunal':'TJSP'}]});
+ await call('clients','POST',{name:'Cliente <img src=x onerror=alert(1)>',cnj});
+ await engine.saveItems('office',monitor.monitorId,[{id:90,numero_processo:cnj,siglaTribunal:'TJSP',data_disponibilizacao:day(),texto:'Publicação de teste a conferir na fonte.'}]);
+ async function task(title,due,status='todo'){
+  let result=await call('tasks','POST',{cnj,title,due_date:due,assignee_id:due?'admin':null});
+  if(status!=='todo')result=await call('tasks/'+result.task.id,'PATCH',{version:result.task.version,status});
+  return result.task;
+ }
+ const overdue=await task('Conferir prazo <script>alert(1)</script>',addDays(day(),-1));
+ await task('Revisar documentos',addDays(day(),3),'review');
+ const undated=await task('Definir responsável e data',null);
+ const html=await readFile(new URL('../public/painel.html',import.meta.url),'utf8');
+ const dom=new JSDOM(html,{url:'https://juris.example/painel.html?view=pending',pretendToBeVisual:true}),win=dom.window;
+ const restore=new Map();
+ function bind(name,value){restore.set(name,Object.getOwnPropertyDescriptor(globalThis,name));Object.defineProperty(globalThis,name,{value,writable:true,configurable:true});}
+ win.matchMedia=()=>({matches:true,addEventListener(){},removeEventListener(){}});
+ win.HTMLElement.prototype.scrollIntoView=function(){};
+ win.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','')};
+ win.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new win.Event('close'))};
+ const reads=[];
+ for(const [name,value] of Object.entries({window:win,document:win.document,location:win.location,history:win.history,localStorage:win.localStorage,FormData:win.FormData,CustomEvent:win.CustomEvent,setInterval:()=>0}))bind(name,value);
+ bind('fetch',async(path,options={})=>{
+  const url=new URL(path,'https://juris.example');if(url.pathname==='/api/read')reads.push(options.body);
+  try{return Response.json(await engine.handle(new Request(url,options),'office'))}catch(error){return Response.json({error:error.message},{status:error.status||500})}
+ });
+ t.after(()=>{dom.window.close();for(const [name,descriptor] of restore){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete globalThis[name]}client.close()});
+ const $=selector=>win.document.querySelector(selector);
+ async function until(predicate,label){for(let i=0;i<150;i++){if(await predicate())return;await new Promise(resolve=>setTimeout(resolve,20))}assert.fail(label||'UI did not settle')}
+ await import('../public/juris.js?pending-dom-test');
+ await until(()=>$('#pending-list .pending-case'),'Pending board did not load');
+ assert.equal($('#pending-section').hidden,false);
+ assert.equal($('#nav-pending').textContent,'3');
+ assert.equal($('#pending-list').querySelectorAll('img,script').length,0);
+ assert.match($('#pending-list').textContent,/Cliente <img/);
+ $('[data-pending-focus="no_date"]').click();
+ await until(()=>$('#pending-list [data-pending-item="'+undated.id+'"]')&&$('#pending-list').querySelectorAll('.pending-item').length===1,'No-date filter');
+ $('[data-pending-focus="open"]').click();
+ await until(()=>$('#pending-list').querySelectorAll('.pending-item').length===3,'Open filter');
+ $('#pending-list [data-pending-step="'+overdue.id+'"]').click();
+ await until(()=>$('#pending-list [data-pending-step="'+overdue.id+'"]')?.dataset.pendingStatus==='review','Task must move to doing');
+ $('#pending-list [data-pending-step="'+overdue.id+'"]').click();
+ await until(()=>$('#pending-list [data-pending-step="'+overdue.id+'"]')?.dataset.pendingStatus==='done','Task must move to review');
+ $('#pending-list [data-pending-step="'+overdue.id+'"]').click();
+ await until(()=>!$('#pending-list [data-pending-item="'+overdue.id+'"]')&&$('#nav-pending').textContent==='2','Completed task disappears from open list');
+ assert.equal((await call('tasks/'+overdue.id)).task.status,'done');
+ $('#pending-list [data-pending-case="'+cnj+'"]').click();
+ await until(()=>$('#detail-modal').open&&$('#case-pending-count').textContent==='2 em aberto'&&$('#detail-content [data-publication-read]'),'Case pending view');
+ assert.equal(reads.length,0,'Opening the process must not automatically acknowledge publications');
+ assert.equal((await call('state')).stats.unread,1);
+ $('#detail-content [data-publication-read]').click();
+ await until(async()=>reads.length===1&&(await call('state')).stats.unread===0,'Explicit read acknowledgement');
+ assert.equal((await call('tasks/pending')).summary.open,2,'Reading must not conclude pending tasks');
+ $('#detail-content [data-publication-task]').click();
+ await until(()=>$('#task-modal').open&&$('#task-form').elements.title.value.startsWith('Conferir publicação'),'Publication task creation');
+ const form=$('#task-form');
+ assert.equal(form.elements.due_date.value,'','No legal deadline may be inferred');
+ assert.match(form.elements.description.value,/Publicação de teste a conferir/);
+ form.elements.title.value='Protocolar resposta';
+ form.elements.assignee_id.value='admin';form.elements.due_date.value=addDays(day(),1);
+ form.dispatchEvent(new win.Event('submit',{bubbles:true,cancelable:true}));
+ await until(async()=>(await call('tasks/pending')).summary.open===3&&$('#case-pending-count').textContent==='3 em aberto','New task reflected in case summary');
+ assert.equal((await call('tasks?cnj='+cnj)).rows.find(task=>task.title==='Protocolar resposta').due_date,addDays(day(),1));
+ $('#case-task-completed').checked=true;$('#case-task-completed').dispatchEvent(new win.Event('change',{bubbles:true}));
+ await until(()=>$('#case-task-list').querySelectorAll('.pending-item').length===4,'Completed task history');
+ assert.ok($('#case-task-list [data-pending-item="'+overdue.id+'"].is-done'));
+ $('#task-modal').close();$('#detail-modal').close();
+ $('nav [data-view="processes"]').click();
+ await until(()=>$('#rows .process-pending-badge'),'Portfolio pending badge');
+ assert.match($('#rows .process-pending-badge').textContent,/3 pendências/);
+ await new Promise(resolve=>setTimeout(resolve,60));
+});

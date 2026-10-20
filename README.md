@@ -145,3 +145,18 @@ Cada página descoberta fica em uma fila interna e é verificada de forma retom�
 Casos elegíveis mantêm o histórico anterior capturado. Registros previamente salvos e tarefas manuais são preservados; o catálogo importado explicitamente por planilha continua separado da coleta automática. Datas antigas seguem disponíveis para futuras buscas.
 
 A migração aditiva 0008 cria a fila de candidatos, o checkpoint da página e o cache diário de verificações negativas. Não exige novas variáveis de ambiente. A 0007 continua fornecendo o índice de atividade por CNJ. As consultas não usam tokens de IA.
+
+
+## Pendências por processo
+
+A aba **Pendências** organiza as tarefas existentes por CNJ. Cada cartão mostra o cliente vinculado (ou o nome informado pela fonte), tribunal, OABs, progresso e até quatro itens do filtro, com acesso à lista completa. As tarefas anteriores continuam disponíveis na aba Tarefas e no mesmo histórico; não existe uma segunda base de pendências.
+
+O resumo destaca itens em aberto, atrasados, com vencimento hoje, para revisão, sem responsável e sem data. Há filtros por pessoa, prioridade, cliente, CNJ, texto, hoje, próximos sete dias e concluídas. A ordenação padrão prioriza atrasos, hoje e a semana antes dos itens sem prazo. Os próximos sete dias incluem hoje. Os totais respeitam o acesso da pessoa e a seleção de OAB, tribunal, busca, responsável e prioridade; os atalhos de status/data selecionam os cartões dentro desse resumo.
+
+Na lista de Processos, o indicador mostra as pendências e os atrasos de cada processo. Abra o indicador para ir diretamente à seção **O que falta tratar**, posicionada no início da ficha. Ela mostra itens em aberto por padrão e permite consultar também as concluídas. O administrador cria e atribui pendências. Estagiários veem somente seus itens, atualizam até Para revisão e comentam. A conclusão permanece com o administrador, com controle de versão e histórico das alterações.
+
+As ações **Iniciar**, **Enviar para revisão**, **Concluir** e **Reabrir** usam as mesmas regras da API de tarefas. Uma alteração concorrente exige carregar a versão atual. A tela atualiza a cada minuto enquanto está aberta. O painel não envia notificações fora do site e não substitui a conferência dos prazos pela equipe.
+
+Abrir a ficha do processo não marca todas as publicações como lidas. Em cada publicação, **Marcar como lida** registra a leitura explicitamente; isso não conclui pendências. **Criar pendência** abre um cadastro com CNJ, data e teor da publicação como referência. A pessoa informa responsável e prazo após conferir a fonte, sem cálculo automático de prazo judicial. A opção de leitura em lote da seleção continua disponível para o administrador como ação explícita.
+
+A coleta do DJEN não comprova cobertura de todas as movimentações do tribunal. Dados ausentes, falhas de coleta e prazos não cadastrados impedem qualquer garantia de ausência de perdas. O painel torna visíveis as lacunas de cadastro, sem inventar obrigações ou datas a partir do texto de uma publicação. A migração aditiva 0009 acrescenta índices de tarefas e preserva os dados.
