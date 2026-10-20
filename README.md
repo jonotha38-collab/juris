@@ -115,3 +115,18 @@ Há também **Copiar mensagem** e um link alternativo oficial do WhatsApp com te
 Como o destinatário é escolhido fora do site, esse atalho não confirma entrega, não cria registro de envio por cliente e não remove pendências da fila. A opção **Usar contato cadastrado** continua disponível para preparar e registrar uma comunicação vinculada a um cliente no Juris.
 
 O backend exige o acesso ao processo para fornecer o texto; estagiários continuam restritos às tarefas atribuídas. A atualização não exige migração nem novas variáveis de ambiente.
+
+
+## Importação de planilha em JSON (v5.2)
+
+Em **Importar**, selecione o JSON convertido da planilha e informe a OAB/UF à qual deseja vincular o cadastro. O formato aceita uma lista direta com as colunas **Número** (CNJ como texto) e **Título**, preservando os demais campos. Primeiro clique em **Analisar arquivo**, confira novos, existentes e repetições e depois em **Confirmar importação**. Até 1.000 registros e 2 MB por arquivo; o painel envia lotes de 100 e pode repetir os lotes após uma falha.
+
+O CNJ normalizado identifica o processo dentro do escritório. Reimportar o mesmo CNJ atualiza seus campos da planilha e o vínculo com a OAB, preservando publicações oficiais, anotações, favoritos, tarefas e clientes já vinculados. Se houver linhas repetidas no mesmo arquivo, prevalece a primeira. A lista principal agrupa um único processo por CNJ, inclusive quando a fonte usa rótulos diferentes de tribunal.
+
+Os cadastros ficam separados das publicações. A ficha exibe **Dados da planilha**, com todos os campos originais; o último histórico da planilha não conta como publicação oficial, não aumenta o ranking nem cria pendências de WhatsApp. Os processos importados permitem notas, favoritos, tarefas e vínculos com clientes, com as mesmas restrições de acesso dos estagiários. O campo Cliente da planilha não cria um contato automaticamente: confirme a pessoa representada antes de vincular.
+
+Sem tribunal informado, o cadastro usa **Não informado**; se já houver publicações do CNJ, usa o tribunal de uma publicação recente. Nenhum acesso ao SEEU ou aos autos é inferido da importação. A coleta por OAB continua dependendo da cobertura do DJEN.
+
+Em Configurações, **Cadastros importados em JSON** baixa os campos da planilha vinculados à OAB/tribunal selecionados. Excel e Publicações em JSON continuam exportando apenas publicações capturadas. O backup do banco inclui cadastros e vínculos.
+
+A migração aditiva **0006** cria o catálogo e suas relações de OAB, sem alterar publicações existentes ou exigir novas variáveis. Os testes automatizados usam somente registros fictícios, inclusive um lote de 720 processos, sem incluir a planilha real no repositório.
