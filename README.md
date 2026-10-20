@@ -1,49 +1,57 @@
-# Juris — frontend e backend locais
+# Juris · Implantação na Vercel
 
-Requisito: Node.js 24 LTS ou superior. Sem npm install e sem chave de IA.
+Pacote completo e independente do site de demonstração: frontend estático, backend Node.js, banco remoto Turso/libSQL, autenticação por senha e coleta diária. Inclui ranking de atividade no DJEN, favoritos, anotações e Excel.
 
-1. Extraia esta pasta em seu computador.
-2. Abra um terminal nessa pasta e execute `node server.mjs`.
-3. Abra http://127.0.0.1:8787.
-4. Use “Buscar por OAB”, informe número, UF e período.
-5. Mantenha o terminal e o computador ligados para a coleta autônoma.
+## Publicar, passo a passo
 
-O servidor processa as páginas em segundo plano, mesmo com o navegador fechado. Cada monitor habilitado inicia uma nova consulta a cada seis horas, revendo os últimos sete dias. No primeiro cadastro você escolhe o intervalo histórico. A consulta é dividida em janelas de sete dias e páginas de 100 itens; não há teto comercial de processos. As restrições e quotas da fonte continuam aplicáveis. Um erro conserva o cursor e os dados; use “Retomar”. HTTP 429 respeita a espera indicada pela fonte, com mínimo de um minuto. Um monitor com erro precisa de retomada manual para evitar tentativas repetidas indevidas.
+1. Crie um banco **libSQL** no [Turso](https://turso.tech/) e obtenha sua URL e token com permissão de escrita. O adaptador usa @libsql/client; não selecione um banco incompatível com libSQL.
+2. Extraia este ZIP e envie **todo o conteúdo**, incluindo api/, core/, lib/, public/, migrations/, scripts/, package.json e vercel.json, para um repositório Git privado no GitHub.
+3. Na [Vercel](https://vercel.com/new), escolha Add New → Project e importe o repositório. Framework Preset: **Other**. Root Directory: pasta com este package.json. O vercel.json já define Build Command e Output Directory.
+4. Antes de clicar em Deploy, adicione as cinco variáveis abaixo em Environment Variables. Habilite-as no ambiente Production. Para Preview, use um banco e segredos separados ou deixe Preview desativado.
+5. Clique em Deploy. O build aplica as migrações no Turso e gera o frontend. Se faltar uma variável, ele para com uma mensagem; preencha a variável e faça Redeploy.
+6. Abra o domínio publicado e entre usando APP_PASSWORD. Cadastre sua OAB e valide uma busca real de poucos dias. O pacote não contém dados fictícios.
+7. Confira Vercel → Settings → Functions: região São Paulo (gru1), Node.js 24 e Fluid Compute. Em Settings → Cron Jobs, confirme a coleta agendada. A publicação real na sua conta e o acesso ao DJEN precisam ser validados após estes passos.
 
-## Cobertura e validação
+| Variável | Conteúdo |
+|---|---|
+| TURSO_DATABASE_URL | URL libsql://... fornecida pelo Turso |
+| TURSO_AUTH_TOKEN | Token de escrita do banco |
+| APP_PASSWORD | Senha forte e exclusiva do escritório, com no mínimo 16 caracteres |
+| SESSION_SECRET | Valor aleatório de pelo menos 32 caracteres para assinar as sessões |
+| CRON_SECRET | Outro valor aleatório, de pelo menos 32 caracteres, para proteger a coleta |
 
-A API pública do DJEN é consultada com numeroOab, ufOab, dataDisponibilizacaoInicio, dataDisponibilizacaoFim, pagina e itensPorPagina. Fonte: https://comunicaapi.pje.jus.br/api/v1/comunicacao. Documentação oficial: https://hcomunicaapi.cnj.jus.br/swagger/index.html.
+Para gerar um segredo, execute no seu computador `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`. Execute duas vezes, usando valores diferentes para SESSION_SECRET e CRON_SECRET. Nunca coloque os segredos no GitHub ou em código do navegador; não use prefixo NEXT_PUBLIC_. Não reutilize os exemplos como senhas reais.
 
-A execução no ambiente de desenvolvimento recebeu HTTP 403 com mensagem de bloqueio geográfico. Portanto a coleta real de produção NÃO pôde ser validada aqui. Execute em uma conexão permitida no Brasil e valide sua inscrição. Não há mecanismo de contorno de bloqueios. Se a API alterar o contrato, atualize core/engine.mjs. A captura está coberta por testes com respostas simuladas, explicitamente identificadas.
+Se mudar uma variável de ambiente, faça Redeploy. Alterar APP_PASSWORD ou SESSION_SECRET invalida as sessões. As sessões duram 12 horas, usam cookie HttpOnly, Secure em HTTPS e SameSite=Strict. Tentativas de acesso têm limite persistente por IP e global. O código é destinado a **um único escritório** e usa um espaço de dados fixo; não é uma plataforma multiempresa com contas individuais.
 
-A descoberta pela OAB é baseada nas publicações do DJEN. Não descobre necessariamente todos os processos do advogado e não captura todas as movimentações do tribunal. Não inclui autos/documentos completos, processos sigilosos nem o Domicílio Judicial Eletrônico. Não calcula prazos. Não substitui a conferência nas fontes oficiais. Não existe integração paga escondida. Não há IA ou cobrança por tokens.
+## Coleta e limites
 
-## Dados e backup
+A função está configurada em São Paulo (gru1). O ambiente de desenvolvimento recebeu HTTP 403 por bloqueio geográfico do DJEN. A região brasileira não garante autorização: o provedor ainda pode bloquear IPs de hospedagem. A integração de produção precisa ser verificada com sua OAB. O código respeita HTTP 429 e não tenta contornar bloqueios.
 
-SQLite em data/juris.sqlite, persistente entre reinicializações. Pare o servidor antes de copiar toda a pasta data para backup consistente. O histórico é deduplicado por identificação oficial; alterações e cancelamentos presentes na resposta atualizam os registros. A releitura de sete dias não detecta alterações de registros antigos fora dessa janela; execute uma busca histórica para reconciliar outro período.
+O cron em vercel.json executa diariamente às 11h UTC (aproximadamente 8h em São Paulo). No plano Hobby, a Vercel limita cada cron a uma execução diária e não garante o minuto exato. A função tem maxDuration de 300 segundos; cada lote usa um orçamento de até 240 segundos antes de iniciar uma próxima etapa. Há um limite operacional de 100 etapas por lote, não um limite comercial de processos. O ponto de paginação fica no banco para a próxima execução ou retomada no painel.
 
-A exportação JSON mantém as publicações originais. A importação aceita até 1.000 itens e 2 MB por lote; indique a OAB de origem. Não inclua banco, credenciais ou dados reais em repositórios públicos.
+Para uma carteira grande, a execução diária pode não terminar todo o histórico. O painel mostra o progresso. Use a versão local contínua ou, em um plano que permita, ajuste o cron para uma frequência maior. Não basta usar setInterval em uma função da Vercel: o agendamento está implementado pelo cron da plataforma. O navegador também pode conduzir buscas abertas.
 
-## Implantação
+A descoberta e o ranking são baseados nas **publicações capturadas do DJEN**, não no acervo completo da OAB nem em todas as movimentações do tribunal. Publicações canceladas não entram no ranking. A comparação usa o período anterior de igual duração. Ausência de registros não prova ausência de atividade processual. Sem sigilo, acesso aos autos completos, Domicílio Judicial Eletrônico, cálculo de prazo ou IA.
 
-Por padrão o servidor aceita conexões somente no próprio computador. Para um VPS no Brasil, configure HOST, PORT e ACCESS_TOKEN como variáveis de ambiente, coloque o servidor atrás de um proxy HTTPS autenticado e faça o proxy acrescentar o cabeçalho `Authorization: Bearer ...` sem expor o token ao navegador. O servidor rejeita HOST não local sem ACCESS_TOKEN. O agendador local deve ter uma única instância por banco; evite múltiplos processos usando o mesmo arquivo. Use um gerenciador de serviços para reiniciar o processo após reboot.
+## Persistência e exportação
 
-## API
+Todos os registros, favoritos e anotações ficam no banco Turso, preservados entre deploys. Não há gravação persistente no disco da função. O cron e o acesso autenticado usam o mesmo espaço de dados office. Utilize um banco próprio para esta implantação; não compartilhe com outra aplicação.
 
-GET /api/state?view=processes|publications&page=1&q=&tribunal=&unread=1
-POST /api/search {oab,uf,start,end}
-POST /api/jobs/:id/step {}
-POST /api/jobs/:id/resume {}
-PATCH /api/monitors/:id {enabled:true}
-GET /api/process/:cnj?offset=0
-POST /api/read {cnj} ou {id}
-GET /api/export?offset=0 (lotes de 1.000)
-POST /api/import {oab,uf,start,end,items:[...]}
+Para migrar as publicações da versão anterior, exporte o JSON antigo e use Importar publicações no novo site, informando OAB e UF. O Excel reúne os processos e o histórico. O JSON contém publicações originais; favoritos e anotações exigem backup do banco pelo provedor. Não publique dados pessoais, anotações ou o banco em um repositório aberto.
 
-O frontend e o servidor local compartilham a mesma API da versão hospedada. No painel hospedado, buscas são conduzidas pela aba aberta; não há cron hospedado configurado. Na versão local, o agendador está no backend e não utiliza o navegador nem tokens.
+Os custos e quotas dos planos da Vercel, Turso e fonte oficial continuam aplicáveis. A coleta não usa tokens de IA e o código não cobra por movimentação.
 
-## Excel e nomes das partes
+## Banco e desenvolvimento
 
-O botão “Exportar Excel” gera um arquivo .xlsx com abas Processos (um registro por CNJ) e Publicações (histórico completo), cabeçalhos fixos, filtros, faixas alternadas e datas do Excel. O export inclui todo o histórico salvo, independentemente do filtro atual. A primeira coluna contém o nome das partes; polos ativo e passivo ficam em colunas separadas. O número CNJ é texto, preservando zeros iniciais. O Excel limita o teor a 32.767 caracteres por célula; o backup JSON preserva o texto original completo.
+As migrações SQL são aplicadas em transações durante `npm run build`, com controle da versão no banco. Não altere migrações já aplicadas. Para executar manualmente, copie .env.example para .env.local, preencha seus valores e execute `npm ci` seguido de `npm run db:migrate`. Para testar o ambiente completo na sua máquina, use a CLI oficial Vercel (`vercel dev`) com as variáveis do projeto. Não envie .env.local ao GitHub.
 
-O título das listas e do histórico usa nomes estruturados de destinatarios da resposta do DJEN. Nomes de advogados não são usados como nomes das partes. Se a fonte não informar os nomes, a interface mostra “Nome não informado pela fonte”, sem inferência por IA. Os dados já salvos recebem os nomes na leitura, sem nova coleta.
+O adaptador D1/libSQL está em lib/database.mjs; o domínio compartilhado em core/engine.mjs; a função em api/index.mjs. O frontend fica em public/. As rotas /api/* são encaminhadas para uma única função e não dependem de Cloudflare, ChatGPT ou conta do Astrea.
+
+## Referências oficiais consultadas
+
+- https://vercel.com/docs/functions/runtimes/node-js
+- https://vercel.com/docs/functions/configuring-functions/region
+- https://vercel.com/docs/cron-jobs/usage-and-pricing
+- https://vercel.com/docs/cron-jobs/manage-cron-jobs
+- https://docs.turso.tech/sdk/ts/reference
