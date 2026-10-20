@@ -36,9 +36,10 @@ export function createHandler({env=process.env,database=getDatabase,fetcher=fetc
   if(path==='cron'){
    if(request.method!=='GET')return reply({error:'Método não permitido.'},405);
    if((env.CRON_SECRET||'').length<32||!secureEqual(request.headers.get('authorization')||'','Bearer '+env.CRON_SECRET))return reply({error:'Não autorizado.'},401);
-   const engine=createEngine(await database(),{fetcher,mode:'vercel'});const deadline=clock()+240000;let steps=0;let last=null;
+   const engine=createEngine(await database(),{fetcher,mode:'vercel',aiEnv:env});const deadline=clock()+150000;let steps=0;let last=null;
    while(clock()<deadline&&steps<100){last=await engine.tick();if(!last?.worked)break;steps++;if(last.job?.retry_at>clock())break;await new Promise(r=>setTimeout(r,1000));}
-   return reply({ok:true,steps,message:'Lote encerrado. Buscas incompletas conservam o ponto de retomada.'});
+   const ai=await engine.aiTick('office');
+   return reply({ok:true,steps,ai,message:'Lote encerrado. Buscas incompletas conservam o ponto de retomada.'});
   }
   const session=readSession(request.headers.get('cookie'),env,clock());
   const unauthorized=()=>reply({error:'Entre para acessar seu escritório.',loginUrl:'/login.html'},401,{'Set-Cookie':sessionCookie('',url.protocol==='https:')});
@@ -56,7 +57,7 @@ export function createHandler({env=process.env,database=getDatabase,fetcher=fetc
    const next=await db.prepare("UPDATE members SET password_hash=?,session_version=session_version+1,updated=? WHERE owner='office' AND id=? AND session_version=? RETURNING id,session_version").bind(await hashPassword(body.password),new Date(clock()).toISOString(),actor.id,session.version).first();
    if(!next)return unauthorized();return reply({ok:true},200,{'Set-Cookie':sessionCookie(createSession(env,clock(),next),url.protocol==='https:')});
   }
-  const engine=createEngine(db,{fetcher,mode:'vercel',actor});
+  const engine=createEngine(db,{fetcher,mode:'vercel',actor,aiEnv:env});
   const forwarded=new Request(url,request);return reply(await engine.handle(forwarded,'office'));
  }catch(e){if(e instanceof AppError)return reply({error:e.message},e.status);console.error('Juris API:',e.code||e.name);return reply({error:e.message==='CONFIG_MISSING'?'Configure TURSO_DATABASE_URL e TURSO_AUTH_TOKEN e faça um novo deploy.':'Não foi possível concluir a operação. Confira a configuração e as migrações do banco.'},503);}
  };

@@ -30,7 +30,7 @@ export function createPendingBoard(db,{owner,actor,taskContext,directory}){
   }
   const summary=await first(`SELECT ${totals()},COUNT(DISTINCT CASE WHEN t.status!='done' THEN t.cnj END) processes FROM tasks t WHERE ${where}`,...dates,...args);
   const focus=url.searchParams.get('focus')||'open';
-  if(!['open','overdue','today','week','review','unassigned','no_date','done'].includes(focus))throw new AppError('Filtro de pendências inválido.');
+  if(!['open','todo','doing','overdue','today','week','review','unassigned','no_date','done'].includes(focus))throw new AppError('Filtro de pendências inválido.');
   let selected=where;const selectedArgs=[...args];
   if(focus==='done')selected+=" AND t.status='done'";
   else{
@@ -38,7 +38,7 @@ export function createPendingBoard(db,{owner,actor,taskContext,directory}){
    if(focus==='overdue'){selected+=' AND t.due_date<?';selectedArgs.push(today);}
    if(focus==='today'){selected+=' AND t.due_date=?';selectedArgs.push(today);}
    if(focus==='week'){selected+=' AND t.due_date BETWEEN ? AND ?';selectedArgs.push(today,plusDays(today,6));}
-   if(focus==='review')selected+=" AND t.status='review'";
+   if(['review','todo','doing'].includes(focus)){selected+=' AND t.status=?';selectedArgs.push(focus);}
    if(focus==='unassigned')selected+=' AND t.assignee_id IS NULL';
    if(focus==='no_date')selected+=' AND t.due_date IS NULL';
   }
