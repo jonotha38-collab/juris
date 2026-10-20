@@ -184,3 +184,40 @@ As regras de cada processo devem ser verificadas nas fontes oficiais: [CPC, arts
 APIs: `GET /api/deadlines` (filtros de OAB, tribunal, CNJ, texto e status), `GET /api/deadlines/:id` (fonte, indicações, tarefas e histórico), `POST /api/deadlines/:id` (confirmar, registrar sem novo prazo ou reabrir). O histórico de tarefas inclui `deadlineSource` somente após a verificação do acesso à tarefa.
 
 Os testes cobrem extração, ambiguidade, ausência de indicação, datas inválidas, contagem explícita, migração de publicações existentes, leitura independente, múltiplos prazos, responsáveis, escopo por OAB/tribunal, isolamento de escritórios e estagiários, concorrência, correção, cancelamento e o fluxo completo da página com banco em memória.
+
+## Assistente IA para leitura e organização dos processos
+
+A aba **Assistente IA** usa a API real da OpenAI (Responses, saída estruturada e modelo `gpt-5.4-mini-2026-03-17`) para sugerir providências a partir das publicações que o Juris já capturou. Não se trata de uma simulação de IA ou apenas de buscas por palavras. Não há acesso automático à íntegra dos autos, às peças ou a dados que o tribunal não entregou ao Juris.
+
+Para ativar, entre como administrador em **Assistente IA → Configurar IA**, cadastre uma chave da API e habilite a análise. A API pode gerar cobrança na conta da OpenAI. O limite diário padrão do escritório é de 200.000 tokens, ajustável entre 5.000 e 2.000.000. Pode também configurar `OPENAI_API_KEY` apenas no ambiente do servidor; nesse caso a chave aparece como gerenciada pela Vercel. Nenhuma chave vai para os arquivos estáticos ou para o repositório. O formulário não usa localStorage.
+
+Chaves cadastradas pelo painel são protegidas com AES-GCM, IV aleatório e chave derivada de `SESSION_SECRET` e da identificação do escritório. A API nunca retorna a chave nem o conteúdo criptografado. A troca de `SESSION_SECRET` exige cadastrar novamente a chave salva. Nenhuma nova variável é obrigatória para o build: com a IA desativada, coleta, conferência de prazos e tarefas seguem funcionando.
+
+O botão **Analisar carteira** executa até 20 lotes por ciclo e respeita a seleção de OAB e tribunal. Cada ficha de processo tem **Analisar com IA** e **Ver sugestões**. O trabalho é dividido em trechos de até 12.000 caracteres, com até 24.000 caracteres por chamada e checkpoints por publicação, versão de origem e posição no texto. Textos longos são retomados, sem serem descartados silenciosamente. O painel informa quantas publicações ainda faltam analisar.
+
+A opção de análise automática usa a fila persistente criada quando uma publicação entra ou é alterada. O cron diário existente reserva até 150 segundos para a coleta e depois tenta um lote adicional de IA. Assim, a análise automática acompanha a execução agendada, sem prometer atualização instantânea ou leitura imediata de toda a carteira. Pelo painel, pode continuar os lotes sem esperar o cron. Publicações canceladas ou sem texto são registradas sem chamada ao modelo, e a conferência humana dessas publicações continua pendente.
+
+Resultados já processados não geram uma nova chamada até surgir uma nova versão da publicação. Marcar uma publicação como lida ou alterar o andamento de uma tarefa não provoca cobrança de reanálise. A reserva de tokens é compartilhada pelo escritório e verificada atomicamente entre análises simultâneas. A reserva usa um limite conservador de entrada e a saída máxima de 4.000 tokens; após resposta com uso válido, o consumo informado substitui a reserva. Falhas sem uso verificável mantêm a reserva no limite local, sem afirmar que houve cobrança efetiva. O consumo e a fatura reais são os informados pela OpenAI; o limite local não é um teto em reais ou dólares.
+
+Cada sugestão traz texto de origem, publicação, versão, providência, prioridade e período ou data explícita. O servidor rejeita publicações não enviadas ao modelo, trechos sem correspondência literal e datas que não aparecem na evidência citada. Saídas incompletas e inválidas não viram sugestões e não avançam o cursor. Dados do processo são tratados como conteúdo não confiável, sem ferramentas ou execução de comandos. A chamada envia `store:false`; isso não é uma promessa de retenção zero, e continuam aplicáveis as políticas de dados da conta da OpenAI.
+
+A organização distingue:
+- **A fazer · sugerido**: providências ainda não confirmadas pela equipe;
+- **Possíveis atrasos**: datas explícitas no texto anteriores ao dia atual, ainda sujeitas à conferência de cumprimento e regra aplicável;
+- **Prazo a conferir**: indicação de prazo ou compromisso sem vencimento confirmado;
+- **Organizadas em tarefas**: indicações aceitas ou vinculadas a uma tarefa existente;
+- **Fonte alterada**: versões anteriores que precisam ser comparadas com a publicação atual.
+
+O administrador lê a origem e confirma a providência, responsável e vencimento. Pode corrigir o texto, registrar uma data manual verificada ou vincular a uma tarefa já existente, preservando andamento e data dela. Se aceitar uma indicação de prazo sem data, o Juris cria uma tarefa de alta prioridade **Conferir prazo**, com vencimento vazio. Datas passadas só aparecem como atrasos efetivos nas pendências depois de o escritório registrá-las na tarefa. A IA não presume o termo inicial, não calcula automaticamente datas relativas e não conclui tarefas.
+
+Na aba **Pendências**, os filtros **A fazer**, **Em andamento** e **Prazos atrasados** usam as tarefas reais e o vencimento registrado. Tarefas originadas da IA mostram sua identificação e a evidência na ficha. Estagiários acessam somente as tarefas atribuídas e a origem correspondente; configuração, consumo, análises e decisões da IA ficam com o administrador. Aceites concorrentes não duplicam tarefas. Descartes exigem leitura da origem e motivo.
+
+Correções e cancelamentos reabrem a análise e tornam visível a mudança na tarefa anterior. Nenhuma data ou tarefa já conferida é apagada ou substituída silenciosamente. A análise da IA não marca publicações como lidas e não encerra a fila de conferência de prazos. Ausência de sugestões não significa ausência de obrigação ou de prazo.
+
+A migração aditiva **0011_ai_process_triage.sql** inclui fila, configurações, controle de consumo, checkpoints, sugestões e registros de chamadas. As colunas de origem acrescentadas às tarefas preservam os registros existentes.
+
+APIs administrativas: `GET/PUT /api/ai/config`, `GET /api/ai`, `POST /api/ai/run-next`, `GET/POST /api/ai/process/:cnj` e `GET/POST /api/ai/suggestions/:id`. O histórico da tarefa retorna `aiSource` somente depois de verificar o acesso à tarefa.
+
+Os testes usam respostas simuladas do provedor, sem chaves reais, dados de clientes ou custo de IA. Verificam criptografia, protocolo da Responses API, origem verificável, cache, limites compartilhados, retomada de textos longos, concorrência, correções durante a chamada, cancelamentos, datas, permissões, cron e o fluxo completo da página com banco em memória. O uso real exige uma chave com saldo e acesso ao modelo; a qualidade jurídica das respostas continua sujeita à conferência da equipe.
+
+Referências da integração: [Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create), [saídas estruturadas](https://developers.openai.com/api/docs/guides/structured-outputs), [modelo utilizado](https://developers.openai.com/api/docs/models/gpt-5.4-mini) e [controles de dados](https://developers.openai.com/api/docs/guides/your-data).
