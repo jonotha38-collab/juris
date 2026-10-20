@@ -13,7 +13,7 @@ async function setup(){
  const stamp=new Date().toISOString();
  for(const [id,name] of [['intern-a','Ana da equipe'],['intern-b','Bruno da equipe']])await client.execute({sql:"INSERT INTO members(id,owner,name,email,password_hash,active,session_version,created,updated) VALUES(?,?,?,?,?,1,1,?,?)",args:[id,'office',name,id+'@example.invalid','',stamp,stamp]});
  async function cases(numbers,oab='12345',uf='SP',owner='office'){
-  return api('import','POST',{oab,uf,start:day(),end:day(),items:numbers.map(n=>({'Número':cnj(n),'Título':n===1?'Caso Alfa':n===2?'Caso Beta':'Caso '+n,'Tribunal':uf==='SP'?'TJSP':'TJRJ'}))},owner);
+  return api('import','POST',{oab,uf,start:day(),end:day(),items:numbers.map(n=>({'Número':cnj(n),'Título':n===1?'Caso Alfa':n===2?'Caso Beta':'Caso '+n,'Tribunal':n===1||uf==='SP'?'TJSP':'TJRJ'}))},owner);
  }
  async function task(n,title,{assignee='intern-a',due=day(),status='todo',priority='normal',owner='office'}={}){
   let result=await api('tasks','POST',{cnj:cnj(n),title,assignee_id:assignee,due_date:due,priority},owner);
