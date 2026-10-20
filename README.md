@@ -130,3 +130,14 @@ Sem tribunal informado, o cadastro usa **Não informado**; se já houver publica
 Em Configurações, **Cadastros importados em JSON** baixa os campos da planilha vinculados à OAB/tribunal selecionados. Excel e Publicações em JSON continuam exportando apenas publicações capturadas. O backup do banco inclui cadastros e vínculos.
 
 A migração aditiva **0006** cria o catálogo e suas relações de OAB, sem alterar publicações existentes ou exigir novas variáveis. Os testes automatizados usam somente registros fictícios, inclusive um lote de 720 processos, sem incluir a planilha real no repositório.
+
+
+## Processos recentes na busca por OAB
+
+A coleta automática por OAB considera somente publicações com data posterior ao aniversário de dois anos da data atual, usando o calendário de São Paulo. Um processo com última publicação não cancelada há dois anos ou mais sai dos resultados automáticos. Uma publicação recente do mesmo CNJ faz o processo reaparecer. Publicações futuras ou datas inválidas recebidas na coleta não qualificam atividade.
+
+O formulário abre com o intervalo de dois anos e permite reduzi-lo. A API limita inícios antigos ao primeiro dia elegível e rejeita períodos inteiramente vencidos. Buscas antigas já iniciadas são ajustadas ao retomar; períodos totalmente antigos terminam sem consultar a fonte. A paginação usa o tamanho original da página, mesmo quando itens fora do intervalo são ignorados.
+
+Os filtros de carteira, OAB, tribunal, publicações e exportação consideram a atividade recente do processo, preservando o histórico anterior dos casos que continuam elegíveis. Registros já salvos permanecem no banco e na ficha direta. Tarefas criadas manualmente também são preservadas. Cadastros importados explicitamente por planilha continuam disponíveis como cadastro manual, inclusive quando a planilha não contém uma data recente verificável.
+
+O critério é a publicação pública não cancelada capturada no DJEN. Ausência de publicação recente nessa fonte não comprova ausência de todas as movimentações no tribunal. A regra não determina arquivamento ou situação jurídica. A migração 0007 acrescenta um índice de consulta, sem apagar dados ou exigir novas variáveis de ambiente.
