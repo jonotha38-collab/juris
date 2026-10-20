@@ -26,6 +26,7 @@ export function createClients(db,{owner,actor=ADMIN,resolveScope}){
   if(path.length===2&&path[1]==='summary'&&method==='GET')return summary(url);
   if(path.length===2&&path[1]==='processes'&&method==='GET')return processList(url);
   if(path.length===2&&path[1]==='updates'&&method==='GET')return updates(url);
+  if(path.length===3&&path[1]==='publications'&&method==='GET'){const a=acl();const row=await first(`SELECT id,cnj,tribunal,date,text,type,hash,canceled,raw FROM publications WHERE owner=? AND id=? ${a.sql}`,owner,path[2],...a.args);if(!row||url.searchParams.get('cnj')&&url.searchParams.get('cnj')!==row.cnj)throw new AppError('Publicação não encontrada.',404);return {publication:named(row)};}
   if(path.length===1&&method==='POST'){requireAdmin();const next=fields(body),id=crypto.randomUUID(),at=stamp();if(body.cnj)await process(body.cnj);const statements=[q('INSERT INTO clients(id,owner,name,whatsapp,email,notes,archived,version,created,updated) VALUES(?,?,?,?,?,?,0,1,?,?)',id,owner,next.name,next.whatsapp,next.email,next.notes,at,at)];if(body.cnj)statements.push(q('INSERT INTO client_processes(owner,client_id,cnj,created) VALUES(?,?,?,?)',owner,id,body.cnj,at));await db.batch(statements);return {client:await client(id)};}
   const id=path[1];
   if(path.length===2&&method==='GET')return {client:await client(id)};

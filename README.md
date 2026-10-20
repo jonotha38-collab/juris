@@ -104,3 +104,14 @@ Para números brasileiros, informe DDD e telefone; o sistema acrescenta 55. Para
 A migração **0005** acrescenta clientes, vínculos e registros de mensagens. Preserva publicações, equipe e tarefas e não exige novas variáveis de ambiente. Contatos e mensagens ficam no banco entre deploys. O Excel e o JSON de publicações não contêm esses cadastros nem registros de envio: faça backup do banco para preservá-los.
 
 Referência oficial da integração: https://faq.whatsapp.com/5913398998672934
+
+
+## Escolher contato no WhatsApp Web (v5.1)
+
+Nas publicações do painel, do histórico e de Avisar clientes, use **Escolher contato no WhatsApp Web**. O Juris carrega a publicação autorizada, monta uma mensagem editável com CNJ, tribunal, data e teor e abre o WhatsApp Web com o texto. Você escolhe o contato na sua conta e clica em Enviar. O atalho funciona mesmo sem cliente ou telefone cadastrado no Juris.
+
+Há também **Copiar mensagem** e um link alternativo oficial do WhatsApp com texto preenchido. A sessão do WhatsApp Web é mantida pelo próprio WhatsApp; entre ou conecte seu aparelho na página dele quando necessário. Nenhuma credencial ou lista de contatos do WhatsApp é acessada pelo Juris.
+
+Como o destinatário é escolhido fora do site, esse atalho não confirma entrega, não cria registro de envio por cliente e não remove pendências da fila. A opção **Usar contato cadastrado** continua disponível para preparar e registrar uma comunicação vinculada a um cliente no Juris.
+
+O backend exige o acesso ao processo para fornecer o texto; estagiários continuam restritos às tarefas atribuídas. A atualização não exige migração nem novas variáveis de ambiente.
