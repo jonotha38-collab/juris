@@ -55,3 +55,16 @@ O adaptador D1/libSQL está em lib/database.mjs; o domínio compartilhado em cor
 - https://vercel.com/docs/cron-jobs/usage-and-pricing
 - https://vercel.com/docs/cron-jobs/manage-cron-jobs
 - https://docs.turso.tech/sdk/ts/reference
+
+
+## Organização por OAB e tribunal (v3)
+
+O seletor no topo aplica a OAB à visão geral, aos processos, publicações, ranking, leitura em lote e exportação. A tela Por tribunal agrupa a carteira da OAB escolhida; clique em um cartão para abrir seus processos. Cada registro exibe as OABs vinculadas à captura. Um processo ou publicação pode estar associado a mais de uma inscrição sem duplicar o total geral. No filtro de uma OAB, os totais e o histórico mostram somente as publicações vinculadas àquela captura.
+
+Em Minhas OABs, use nomes personalizados para identificar as carteiras. Em cada histórico, escolha o acompanhamento interno (em acompanhamento, aguardando retorno ou arquivado no escritório). Essa marcação não altera nem substitui a situação oficial no tribunal. Favoritos, notas e acompanhamento são do processo no escritório, compartilhados entre as OABs que acompanham o mesmo CNJ.
+
+Excel da seleção exporta os filtros atuais, com a coluna OABs vinculadas à captura, e organiza os processos por tribunal. Remova os filtros para exportar a carteira completa. As rotas de exportação usam páginas de até 500 registros; o frontend percorre todas as páginas automaticamente. A importação continua aceitando até 1.000 publicações e 2 MB por lote, vinculando-as à OAB explicitamente informada.
+
+A migração 0003 é aditiva: acrescenta o nome opcional da OAB, o acompanhamento padrão e um índice de consulta. Não recria o banco, não altera credenciais e preserva publicações, favoritos e anotações. Na Vercel, ela é aplicada no build, como nas versões anteriores. Use as mesmas variáveis de ambiente e o mesmo banco da implantação atual.
+
+Atalhos: Ctrl+K/⌘K abre a busca. Você pode escolher a densidade da lista e 20 ou 50 registros por página. A seleção de OAB e tribunal fica no endereço para permitir favoritos do navegador. Marcar seleção como lida respeita os filtros e não altera publicações fora da seleção.

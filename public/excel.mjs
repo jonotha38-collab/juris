@@ -12,28 +12,30 @@ export function buildReport(items) {
     const type = String(item.tipoComunicacao || item.tipo_comunicacao || 'Publicação');
     const canceled = !!item.motivo_cancelamento || item.ativo === false || item.status === 'C';
     const text = String(item.texto || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const oabNames=(Array.isArray(item._juris_oabs)?item._juris_oabs:[]).map(m=>`${m.oab}/${m.uf}${m.label?' · '+m.label:''}`);
     const certificate = item.hash ? 'https://comunicaapi.pje.jus.br/api/v1/comunicacao/' + encodeURIComponent(item.hash) + '/certidao' : '';
     publications.push([parties.title, cnj, parties.active.join('; ') || missing, parties.passive.join('; ') || missing,
-      parties.other.join('; '), tribunal, organ, date, type, canceled ? 'Cancelada' : 'Publicada', text, certificate, String(item.id || item.hash || '')]);
+      parties.other.join('; '), tribunal, organ, date, type, canceled ? 'Cancelada' : 'Publicada', text, certificate, String(item.id || item.hash || ''),oabNames.join('; ')]);
     let process = processes.get(cnj);
     if (!process) {
-      process = { cnj, active: new Set(), passive: new Set(), other: new Set(), tribunals: new Set(), organs: new Set(), first: date, last: date, count: 0, canceled: 0 };
+      process = { cnj, active: new Set(), passive: new Set(), other: new Set(), tribunals: new Set(), organs: new Set(), first: date, last: date, count: 0, canceled: 0, oabs: new Set() };
       processes.set(cnj, process);
     }
     for (const role of ['active', 'passive', 'other']) for (const name of parties[role]) process[role].add(name);
+    for(const name of oabNames)process.oabs.add(name);
     process.tribunals.add(tribunal); process.organs.add(organ); process.count++; process.canceled += Number(canceled);
     if (date && (!process.first || date < process.first)) process.first = date;
     if (date && (!process.last || date > process.last)) process.last = date;
   }
-  publications.sort((a, b) => b[7].localeCompare(a[7]) || a[0].localeCompare(b[0], 'pt-BR'));
+  publications.sort((a, b) => b[7].localeCompare(a[7]) || a[5].localeCompare(b[5], 'pt-BR') || a[0].localeCompare(b[0], 'pt-BR'));
   const processRows = [...processes.values()].map(p => {
     const parties = partiesOf({ destinatarios: ['active', 'passive', 'other'].flatMap(role => [...p[role]].map(nome => ({ nome, polo: role === 'active' ? 'A' : role === 'passive' ? 'P' : '' }))) });
     return [parties.title, p.cnj, [...p.active].join('; ') || missing, [...p.passive].join('; ') || missing,
-      [...p.other].join('; '), [...p.tribunals].join('; '), [...p.organs].join('; '), p.first, p.last, p.count, p.canceled];
-  }).sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'));
+      [...p.other].join('; '), [...p.tribunals].join('; '), [...p.organs].join('; '), p.first, p.last, p.count, p.canceled,[...p.oabs].join('; ')];
+  }).sort((a, b) => a[5].localeCompare(b[5], 'pt-BR') || a[0].localeCompare(b[0], 'pt-BR'));
   return [
-    { name: 'Processos', headers: ['Nome / partes do processo', 'Número CNJ', 'Polo ativo', 'Polo passivo', 'Outras partes', 'Tribunal', 'Órgão julgador', 'Primeira publicação capturada', 'Última publicação capturada', 'Publicações capturadas', 'Publicações canceladas'], widths: [55, 31, 45, 45, 35, 19, 45, 24, 24, 22, 23], dates: [7, 8], rows: processRows },
-    { name: 'Publicações', headers: ['Nome / partes do processo', 'Número CNJ', 'Polo ativo', 'Polo passivo', 'Outras partes', 'Tribunal', 'Órgão julgador', 'Disponibilização', 'Tipo de comunicação', 'Situação da publicação', 'Teor da publicação (até 32.767 caracteres)', 'Certidão oficial (URL)', 'Identificação na fonte'], widths: [55, 31, 45, 45, 35, 19, 45, 20, 26, 24, 100, 65, 26], dates: [7], rows: publications }
+    { name: 'Processos', headers: ['Nome / partes do processo', 'Número CNJ', 'Polo ativo', 'Polo passivo', 'Outras partes', 'Tribunal', 'Órgão julgador', 'Primeira publicação capturada', 'Última publicação capturada', 'Publicações capturadas', 'Publicações canceladas','OABs vinculadas à captura'], widths: [55, 31, 45, 45, 35, 19, 45, 24, 24, 22, 23,45], dates: [7, 8], rows: processRows },
+    { name: 'Publicações', headers: ['Nome / partes do processo', 'Número CNJ', 'Polo ativo', 'Polo passivo', 'Outras partes', 'Tribunal', 'Órgão julgador', 'Disponibilização', 'Tipo de comunicação', 'Situação da publicação', 'Teor da publicação (até 32.767 caracteres)', 'Certidão oficial (URL)', 'Identificação na fonte','OABs vinculadas à captura'], widths: [55, 31, 45, 45, 35, 19, 45, 20, 26, 24, 100, 65, 26,45], dates: [7], rows: publications }
   ];
 }
 const xml = value => String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
