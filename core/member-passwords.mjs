@@ -1,0 +1,8 @@
+const iterations=600000;
+const encode=bytes=>btoa(String.fromCharCode(...bytes));
+const decode=text=>Uint8Array.from(atob(text),c=>c.charCodeAt(0));
+export function validatePassword(value){if(typeof value!=='string'||value.length<12||value.length>128)throw new Error('Use uma senha de 12 a 128 caracteres.');return value;}
+export async function hashPassword(password){validatePassword(password);const salt=crypto.getRandomValues(new Uint8Array(16));const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt,iterations},key,256);return `pbkdf2$${iterations}$${encode(salt)}$${encode(new Uint8Array(bits))}`;}
+export async function verifyPassword(password,stored){if(typeof password!=='string'||password.length>128)return false;try{const [kind,count,salt,expected]=stored.split('$');if(kind!=='pbkdf2'||Number(count)!==iterations)return false;const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);const bits=new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:decode(salt),iterations:Number(count)},key,256));const target=decode(expected);if(bits.length!==target.length)return false;let diff=0;for(let i=0;i<bits.length;i++)diff|=bits[i]^target[i];return diff===0;}catch{return false;}}
+export function inviteToken(){return encode(crypto.getRandomValues(new Uint8Array(32))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+export async function digestToken(token){const value=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(token)));return Array.from(new Uint8Array(value),x=>x.toString(16).padStart(2,'0')).join('');}

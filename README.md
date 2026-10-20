@@ -22,7 +22,7 @@ Pacote completo e independente do site de demonstração: frontend estático, ba
 
 Para gerar um segredo, execute no seu computador `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`. Execute duas vezes, usando valores diferentes para SESSION_SECRET e CRON_SECRET. Nunca coloque os segredos no GitHub ou em código do navegador; não use prefixo NEXT_PUBLIC_. Não reutilize os exemplos como senhas reais.
 
-Se mudar uma variável de ambiente, faça Redeploy. Alterar APP_PASSWORD ou SESSION_SECRET invalida as sessões. As sessões duram 12 horas, usam cookie HttpOnly, Secure em HTTPS e SameSite=Strict. Tentativas de acesso têm limite persistente por IP e global. O código é destinado a **um único escritório** e usa um espaço de dados fixo; não é uma plataforma multiempresa com contas individuais.
+Se mudar uma variável de ambiente, faça Redeploy. Alterar APP_PASSWORD ou SESSION_SECRET invalida as sessões. As sessões duram 12 horas, usam cookie HttpOnly, Secure em HTTPS e SameSite=Strict. Tentativas de acesso têm limite persistente por IP e global. O código é destinado a **um único escritório** e usa um espaço de dados fixo; não é uma plataforma multiempresa. As contas individuais compartilham o mesmo escritório, com permissões por função e atribuição de tarefas.
 
 ## Coleta e limites
 
@@ -68,3 +68,18 @@ Excel da seleção exporta os filtros atuais, com a coluna OABs vinculadas à ca
 A migração 0003 é aditiva: acrescenta o nome opcional da OAB, o acompanhamento padrão e um índice de consulta. Não recria o banco, não altera credenciais e preserva publicações, favoritos e anotações. Na Vercel, ela é aplicada no build, como nas versões anteriores. Use as mesmas variáveis de ambiente e o mesmo banco da implantação atual.
 
 Atalhos: Ctrl+K/⌘K abre a busca. Você pode escolher a densidade da lista e 20 ou 50 registros por página. A seleção de OAB e tribunal fica no endereço para permitir favoritos do navegador. Marcar seleção como lida respeita os filtros e não altera publicações fora da seleção.
+
+
+## Equipe e tarefas por processo (v4)
+
+O acesso atual por APP_PASSWORD continua como **Administrador**. Em **Equipe**, cadastre nome e e-mail do estagiário, gere o convite e copie o link para compartilhar diretamente. Nenhum e-mail é enviado automaticamente. O link vale por 48 horas e permite que a pessoa crie uma senha de 12 a 128 caracteres uma única vez. Os acessos seguintes ficam em **Sou da equipe**, com e-mail e senha individual.
+
+Abra um processo e escolha **Nova tarefa**. Informe título, orientações, responsável, prazo interno e prioridade. Em **Tarefas**, filtre por OAB, tribunal, responsável, status ou atraso. O painel conta tarefas a fazer, em andamento, para revisão e concluídas. A lista de tarefas atualiza a cada minuto enquanto está aberta, sem tokens de IA.
+
+O estagiário vê somente processos com tarefas atribuídas a ele e somente as suas tarefas, incluindo publicações e anotações desses processos. Pode atualizar o status até **Para revisão** e registrar comentários. O administrador atribui responsáveis, altera os campos e conclui ou reabre o trabalho. Coleta, importação, exportação, marcações de leitura, configurações da carteira e gestão de acessos ficam com o administrador. Essas permissões são verificadas pela API.
+
+Cada tarefa mantém histórico de alterações e comentários com autor e data. Edições concorrentes exigem reabrir a versão atual; não sobrescrevem silenciosamente o trabalho de outra pessoa. O prazo é um controle interno definido pelo escritório, sem cálculo automático de prazo processual.
+
+Em Equipe, **Desativar** bloqueia novas requisições das sessões existentes, preservando tarefas e histórico. **Redefinir acesso** invalida a senha e os links anteriores e gera outro convite. O estagiário também pode alterar a própria senha em Configurações; as outras sessões são invalidadas. Senhas individuais são armazenadas com PBKDF2-HMAC-SHA256 e salt aleatório; o banco guarda apenas o hash dos convites.
+
+A migração 0004 é aditiva: cria as tabelas de pessoas, tarefas, eventos e comentários. Ela é aplicada no build da Vercel, preserva a carteira atual e não exige novas variáveis de ambiente. Contas individuais e convites estão habilitados na versão **Vercel**. O painel Sites e o coletor local continuam com seu mecanismo de acesso existente. O backup JSON das publicações e o Excel não incluem pessoas, tarefas nem comentários; esses dados exigem backup do banco.

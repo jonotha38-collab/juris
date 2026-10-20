@@ -1,7 +1,9 @@
 import {partiesOf} from '../public/parties.mjs';
 import {activityWindow} from './activity.mjs';
 export const UFS = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' ');
-export class AppError extends Error { constructor(message,status=400){super(message);this.status=status;} }
+import {AppError} from './errors.mjs';
+export {AppError} from './errors.mjs';
+import {createCollaboration,ADMIN,permissionsFor} from './collaboration.mjs';
 const now=()=>new Date().toISOString();
 export const day=(value=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(value);
 export function addDays(d,n){const t=new Date(d+'T12:00:00Z');t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10);}
@@ -9,7 +11,7 @@ function date(v){if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v)||Number.
 export function validateSearch(b){let oab=String(b.oab||'').trim().toUpperCase();const uf=String(b.uf||'').toUpperCase();if(!/^\d{1,8}[A-Z]?$/.test(oab)||!UFS.includes(uf))throw new AppError('Informe a OAB (número e eventual letra) e uma UF válida.');oab=oab.replace(/^0+(?=\d)/,'');const start=date(b.start),end=date(b.end);if(start>end||end>day()||start<'2000-01-01')throw new AppError('Confira o período: início anterior ao fim e sem datas futuras.');return {oab,uf,start,end};}
 export function normalize(item){if(!item||typeof item!=='object'||!item.id&&!item.hash)throw new AppError('Publicação sem identificação oficial.');const cnj=String(item.numero_processo||'').replace(/\D/g,'');if(!/^\d{20}$/.test(cnj))throw new AppError('Publicação sem número CNJ válido.');return {id:String(item.id||item.hash),cnj,tribunal:String(item.siglaTribunal||item.sigla_tribunal||'Não informado'),date:String(item.data_disponibilizacao||item.dataDisponibilizacao||'').slice(0,10),text:String(item.texto||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim(),type:String(item.tipoComunicacao||item.tipo_comunicacao||'Publicação'),organ:String(item.nomeOrgao||item.nome_orgao||''),hash:String(item.hash||''),canceled:!!item.motivo_cancelamento||item.ativo===false||item.status==='C',raw:JSON.stringify(item)};}
 export function advance(job,length,count){const windowEnd=[addDays(job.cursor,6),job.end].sort()[0];if(length===0||length<100||(Number.isFinite(count)&&job.page*100>=count)){const cursor=addDays(windowEnd,1);return {cursor,page:1,status:cursor>job.end?'done':'running'};}return {cursor:job.cursor,page:job.page+1,status:'running'};}
-export function createEngine(db,{fetcher=fetch,mode='hosted'}={}){
+export function createEngine(db,{fetcher=fetch,mode='hosted',actor=ADMIN}={}){
 const q=(s,...args)=>db.prepare(s).bind(...args);const all=async(s,...a)=>(await q(s,...a).all()).results;const first=(s,...a)=>q(s,...a).first();const run=(s,...a)=>q(s,...a).run();
 async function monitor(owner,b){const v=validateSearch(b);const id=owner+':'+v.uf+':'+v.oab;await run('INSERT INTO monitors(id,owner,oab,uf,enabled,created,next_run) VALUES(?,?,?,?,1,?,?) ON CONFLICT(id) DO NOTHING',id,owner,v.oab,v.uf,now(),now());return {...v,id};}
 async function start(owner,b){const m=await monitor(owner,b);const existing=await first("SELECT * FROM jobs WHERE owner=? AND monitor_id=? AND status IN ('running','queued') ORDER BY created DESC LIMIT 1",owner,m.id);if(existing)return existing;const id=crypto.randomUUID();await run('INSERT INTO jobs(id,owner,monitor_id,start,end,cursor,page,status,processed,created,updated,error,locked_until,retry_at) VALUES(?,?,?,?,?,?,1,?,0,?,?,?,0,0) ON CONFLICT DO NOTHING',id,owner,m.id,m.start,m.end,m.start,'running',now(),now(),'');return (await first('SELECT * FROM jobs WHERE id=? AND owner=?',id,owner))||first("SELECT * FROM jobs WHERE monitor_id=? AND owner=? AND status='running'",m.id,owner);}
@@ -24,6 +26,7 @@ await saveItems(owner,m.id,body.items);const next=advance(job,body.items.length,
 }catch(e){const message=e.name==='TimeoutError'?'O DJEN demorou para responder. Retome a busca para tentar novamente.':e instanceof AppError?e.message:'Falha de conexão com o DJEN. Seus dados foram preservados; tente retomar a busca.';await run("UPDATE jobs SET status='error',error=?,updated=?,locked_until=0 WHERE id=? AND owner=?",message,now(),id,owner);return first('SELECT * FROM jobs WHERE id=? AND owner=?',id,owner);}}
 async function scope(owner,url,listFilters=false){
   let where='publications.owner=?';const params=[owner];
+  if(actor.role!=='admin'){where+=' AND EXISTS (SELECT 1 FROM tasks acl WHERE acl.owner=publications.owner AND acl.cnj=publications.cnj AND acl.assignee_id=?)';params.push(actor.id);}
   const monitorId=(url.searchParams.get('monitor')||'').slice(0,200);
   if(monitorId){
     if(!await first('SELECT id FROM monitors WHERE id=? AND owner=?',monitorId,owner))throw new AppError('OAB não encontrada neste escritório.',404);
@@ -52,7 +55,7 @@ async function attachMeta(rows,owner){
   const byCnj=new Map(meta.map(x=>[x.cnj,x]));
   return rows.map(x=>{const refs=linked.filter(r=>r.cnj===x.cnj&&(!x.id||String(r.publication_id)===String(x.id)));const unique=new Map(refs.map(r=>[r.id,{id:r.id,oab:r.oab,uf:r.uf,label:r.label||''}]));return {...x,meta:byCnj.get(x.cnj)||{favorite:0,note:'',stage:'active',updated:null},oabs:[...unique.values()]};});
 }
-async function monitorsFor(owner){return all(`SELECT m.*,COUNT(DISTINCT p.cnj) processes,COUNT(p.id) publications,COALESCE(SUM(CASE WHEN p.id IS NOT NULL AND p.seen=0 THEN 1 ELSE 0 END),0) unread FROM monitors m LEFT JOIN links l ON l.owner=m.owner AND l.monitor_id=m.id LEFT JOIN publications p ON p.owner=l.owner AND p.id=l.publication_id WHERE m.owner=? GROUP BY m.id ORDER BY m.uf,m.oab`,owner);}
+async function monitorsFor(owner){return all(`SELECT m.*,COUNT(DISTINCT p.cnj) processes,COUNT(p.id) publications,COALESCE(SUM(CASE WHEN p.id IS NOT NULL AND p.seen=0 THEN 1 ELSE 0 END),0) unread FROM monitors m LEFT JOIN links l ON l.owner=m.owner AND l.monitor_id=m.id LEFT JOIN publications p ON p.owner=l.owner AND p.id=l.publication_id ${actor.role!=='admin'?'AND EXISTS (SELECT 1 FROM tasks acl WHERE acl.owner=p.owner AND acl.cnj=p.cnj AND acl.assignee_id=?)':''} WHERE m.owner=? GROUP BY m.id ${actor.role!=='admin'?'HAVING COUNT(p.id)>0':''} ORDER BY m.uf,m.oab`,...(actor.role!=='admin'?[actor.id]:[]),owner);}
 async function tribunalsFor(owner,url){const unfiltered=new URL(url);unfiltered.searchParams.delete('tribunal');const s=await scope(owner,unfiltered);return all(`SELECT tribunal,COUNT(DISTINCT cnj) processes,COUNT(*) publications,COALESCE(SUM(CASE WHEN seen=0 THEN 1 ELSE 0 END),0) unread,MAX(date) last_date FROM publications WHERE ${s.where} GROUP BY tribunal ORDER BY processes DESC,tribunal`,...s.params);}
 async function state(owner,url){
   const view=url.searchParams.get('view')||'overview',page=Math.max(1,Math.min(1000000,Math.floor(Number(url.searchParams.get('page'))||1))),pageSize=[20,50].includes(Number(url.searchParams.get('pageSize')))?Number(url.searchParams.get('pageSize')):20;
@@ -60,8 +63,8 @@ async function state(owner,url){
   const group=view==='processes';const ordering=group?({tribunal:'tribunal ASC,date DESC,cnj ASC',oldest:'date ASC,cnj ASC',activity:'total DESC,date DESC,cnj ASC',unread:'unread DESC,date DESC,cnj ASC'}[sort]||'date DESC,cnj ASC'):sort==='oldest'?'date ASC,id ASC':'date DESC,id DESC';
   const count=await first(`SELECT COUNT(*) n FROM (${group?'SELECT cnj FROM publications WHERE '+s.where+' GROUP BY cnj,tribunal':'SELECT id FROM publications WHERE '+s.where})`,...s.params);
   const rows=group?await all(`SELECT cnj,tribunal,MAX(organ) organ,COALESCE(MAX(CASE WHEN json_array_length(raw,'$.destinatarios')>0 THEN raw END),MAX(raw)) raw,MAX(date) date,COUNT(*) total,SUM(CASE WHEN seen=0 THEN 1 ELSE 0 END) unread FROM publications WHERE ${s.where} GROUP BY cnj,tribunal ORDER BY ${ordering} LIMIT ? OFFSET ?`,...s.params,pageSize,(page-1)*pageSize):await all(`SELECT id,cnj,tribunal,date,text,type,organ,hash,canceled,seen,raw FROM publications WHERE ${s.where} ORDER BY ${ordering} LIMIT ? OFFSET ?`,...s.params,pageSize,(page-1)*pageSize);
-  const jobs=await all(`SELECT j.*,m.oab,m.uf,m.label FROM jobs j JOIN monitors m ON m.id=j.monitor_id AND m.owner=j.owner WHERE j.owner=? ${s.monitorId?'AND j.monitor_id=?':''} ORDER BY j.created DESC LIMIT 20`,owner,...(s.monitorId?[s.monitorId]:[]));
-  return {mode,stats:await first(`SELECT COUNT(*) publications,COUNT(DISTINCT cnj) processes,COALESCE(SUM(CASE WHEN seen=0 THEN 1 ELSE 0 END),0) unread FROM publications WHERE ${context.where}`,...context.params),monitors:await monitorsFor(owner),tribunals:await tribunalsFor(owner,url),jobs,rows:await attachMeta(rows.map(withParties),owner),total:count.n,page,pageSize,context:{monitorId:s.monitorId,tribunal:s.tribunal}};
+  const jobs=actor.role!=='admin'?[]:await all(`SELECT j.*,m.oab,m.uf,m.label FROM jobs j JOIN monitors m ON m.id=j.monitor_id AND m.owner=j.owner WHERE j.owner=? ${s.monitorId?'AND j.monitor_id=?':''} ORDER BY j.created DESC LIMIT 20`,owner,...(s.monitorId?[s.monitorId]:[]));
+  return {mode,user:{id:actor.id,name:actor.name,role:actor.role},permissions:permissionsFor(actor),taskStats:await collaborationFor(owner).summary(url),stats:await first(`SELECT COUNT(*) publications,COUNT(DISTINCT cnj) processes,COALESCE(SUM(CASE WHEN seen=0 THEN 1 ELSE 0 END),0) unread FROM publications WHERE ${context.where}`,...context.params),monitors:await monitorsFor(owner),tribunals:await tribunalsFor(owner,url),jobs,rows:await attachMeta(rows.map(withParties),owner),total:count.n,page,pageSize,context:{monitorId:s.monitorId,tribunal:s.tribunal}};
 }
 async function activity(owner,url){
   const w=activityWindow(url.searchParams.get('days')),s=await scope(owner,url,true);
@@ -70,9 +73,12 @@ async function activity(owner,url){
   const totals=await first(`SELECT COUNT(*) publications,COUNT(DISTINCT cnj) processes,COALESCE(SUM(CASE WHEN seen=0 THEN 1 ELSE 0 END),0) unread FROM publications WHERE ${s.where} AND canceled=0 AND date BETWEEN ? AND ?`,...s.params,w.start,w.end);
   return {window:w,rows:await attachMeta(rows.map(withParties),owner),timeline,totals,metric:'Publicações não canceladas capturadas no DJEN. Não representa todas as movimentações do tribunal.'};
 }
+const collaborationFor=owner=>createCollaboration(db,{owner,actor,mode,resolveScope:url=>scope(owner,url)});
 async function handle(request,owner){
   const url=new URL(request.url),path=url.pathname.replace(/^\/api\/?/,'').split('/').filter(Boolean).map(decodeURIComponent),method=request.method;let body={};
   if(!['GET','HEAD'].includes(method)){if(request.headers.get('origin')&&request.headers.get('origin')!==url.origin)throw new AppError('Origem não autorizada.',403);const raw=await request.text();if(raw.length>2000000)throw new AppError('Arquivo muito grande. Importe até 2 MB por lote.',413);try{body=JSON.parse(raw||'{}');}catch{throw new AppError('JSON inválido.');}if(!body||typeof body!=='object'||Array.isArray(body))throw new AppError('Informe um objeto JSON válido.');}
+  const collaborationResult=await collaborationFor(owner).handle(path,method,body,url);if(collaborationResult!==undefined)return collaborationResult;
+  if(actor.role!=='admin'&&['meta','search','jobs','monitors','read','import','export'].includes(path[0]))throw new AppError('Esta ação é permitida apenas ao administrador.',403);
   if(path[0]==='state'&&method==='GET')return state(owner,url);
   if(path[0]==='activity'&&method==='GET')return activity(owner,url);
   if(path[0]==='meta'&&method==='PATCH'){
@@ -95,6 +101,7 @@ async function handle(request,owner){
   if(path[0]==='process'&&method==='GET'){
     const s=await scope(owner,url),where=s.where+' AND cnj=?',params=[...s.params,path[1]];
     const rows=await all(`SELECT id,cnj,tribunal,date,text,type,organ,hash,canceled,seen,raw FROM publications WHERE ${where} ORDER BY date DESC LIMIT 100 OFFSET ?`,...params,Math.max(0,Math.floor(Number(url.searchParams.get('offset'))||0)));
+    if(actor.role!=='admin'&&!await first('SELECT id FROM tasks WHERE owner=? AND cnj=? AND assignee_id=? LIMIT 1',owner,path[1],actor.id))throw new AppError('Processo não encontrado.',404);
     return {rows:await attachMeta(rows.map(withParties),owner),count:await first(`SELECT COUNT(*) n FROM publications WHERE ${where}`,...params),meta:await first('SELECT favorite,note,stage,updated FROM process_meta WHERE owner=? AND cnj=?',owner,path[1])||{favorite:0,note:'',stage:'active',updated:null}};
   }
   if(path[0]==='import'&&method==='POST'){if(!Array.isArray(body.items)||body.items.length>1000)throw new AppError('Envie até 1.000 publicações por lote.');body.items.forEach(normalize);const m=await monitor(owner,body);await saveItems(owner,m.id,body.items);return {ok:true,processed:body.items.length,monitorId:m.id};}
