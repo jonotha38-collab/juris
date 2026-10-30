@@ -19,6 +19,7 @@ jobs:
       - name: Install DOM test dependency
         run: npm install --no-save --package-lock=false jsdom@26.1.0
       - name: Check JavaScript syntax
-        run: node --check core/engine.mjs && node --check core/clients.mjs && node --check core/collaboration.mjs && node --check public/juris.js && node --check public/import-ui.mjs && node --check core/pending.mjs && node --check public/pending-ui.mjs && node --check public/collaboration-ui.mjs && node --check core/deadlines.mjs && node --check public/deadline-rules.mjs && node --check public/deadlines-ui.mjs && node --check core/ai-provider.mjs && node --check core/ai.mjs && node --check public/ai-ui.mjs && node --check api/index.mjs
+        run: node --check core/engine.mjs && node --check core/clients.mjs && node --check core/collaboration.mjs && node --check public/juris.js && node --check public/import-ui.mjs && node --check core/pending.mjs && node --check public/pending-ui.mjs && node --check public/collaboration-ui.mjs && node --check core/deadlines.mjs && node --check public/deadline-rules.mjs && node --check public/deadlines-ui.mjs && node --check core/ai-provider.mjs && node --check core/ai.mjs && node --check public/ai-ui.mjs && node --check api/index.mjs && node --check core/reports.mjs && node --check public/tribunal-report.mjs && node --check public/tribunal-export-ui.mjs && node --check public/excel.mjs
       - name: Test imports, AI triage, deadline reviews, pending work and permissions
         run: node --test tests/*.test.mjs
+

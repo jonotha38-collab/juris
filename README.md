@@ -221,3 +221,21 @@ APIs administrativas: `GET/PUT /api/ai/config`, `GET /api/ai`, `POST /api/ai/run
 Os testes usam respostas simuladas do provedor, sem chaves reais, dados de clientes ou custo de IA. Verificam criptografia, protocolo da Responses API, origem verificável, cache, limites compartilhados, retomada de textos longos, concorrência, correções durante a chamada, cancelamentos, datas, permissões, cron e o fluxo completo da página com banco em memória. O uso real exige uma chave com saldo e acesso ao modelo; a qualidade jurídica das respostas continua sujeita à conferência da equipe.
 
 Referências da integração: [Responses API](https://developers.openai.com/api/reference/resources/responses/methods/create), [saídas estruturadas](https://developers.openai.com/api/docs/guides/structured-outputs), [modelo utilizado](https://developers.openai.com/api/docs/models/gpt-5.4-mini) e [controles de dados](https://developers.openai.com/api/docs/guides/your-data).
+
+
+
+## Excel por tribunais selecionados
+
+Em **Por tribunal → Exportar tribunais**, ou em **Exportar Excel** na carteira, escolha um, vários ou todos os tribunais disponíveis. A contagem mostra quantos foram selecionados. A busca local facilita encontrar um tribunal e não apaga as escolhas que ficaram fora da busca.
+
+O tribunal atual é a escolha inicial quando há um tribunal filtrado; os demais continuam disponíveis para inclusão. Sem tribunal específico, todos começam marcados. A seleção respeita a OAB, a busca, os favoritos, a leitura e a situação de acompanhamento da carteira. O diálogo informa o contexto antes da geração.
+
+O Excel contém uma aba **Resumo** e, por padrão, uma aba de processos para cada tribunal escolhido. Desmarque **Uma aba por tribunal** para gerar uma lista consolidada, com um registro por CNJ. A opção **Incluir aba de publicações** adiciona os registros reais capturados, com datas, texto e certidão oficial. Cadastros importados sem publicação entram na lista de processos com zero publicações; nenhum registro de movimentação é inventado.
+
+O nome principal usa clientes vinculados quando existem, preservando também as partes informadas pela fonte. A planilha inclui CNJ, tribunal, OABs, acompanhamento, publicações, pendências, vencimentos registrados e anotações. Esses vencimentos são os cadastrados pela equipe; exportar não calcula nem valida prazos jurídicos. Um CNJ pode constar em mais de um tribunal; o resumo identifica o total único e as contagens de cada tribunal.
+
+A exportação percorre todas as páginas, com até 500 registros por requisição e cursores estáveis, sem depender da página atualmente visível. As contagens são reconciliadas antes do download. Se os registros mudarem durante a leitura e as contagens ficarem incompatíveis, o painel pede uma nova geração, preservando a seleção em vez de baixar um arquivo parcial. É possível cancelar as requisições pelo diálogo.
+
+Os dados de texto e os CNJs são escritos como texto no XLSX, preservando zeros iniciais e evitando execução como fórmulas. Datas válidas são células de data. As abas têm filtro de colunas e cabeçalho congelado; nomes de abas são sanitizados e diferenciados quando necessário. O formato JSON anterior permanece disponível em Configurações. A exportação não faz chamadas de IA e não exige nova migração, variável de ambiente ou dependência de produção.
+
+As APIs **GET /api/reports/tribunals**, **GET /api/reports/processes** e **GET /api/reports/publications** são restritas ao administrador e ao escritório autenticado. As duas últimas exigem parâmetros repetidos de tribunais, por exemplo `tribunals=TJSP&tribunals=SEEU`, e retornam cursor `next` para continuação. Testes com dados sintéticos verificam permissões, OAB, seleção múltipla, mais de 500 registros, catálogo importado, estrutura XLSX, texto seguro, contagens, erros, cancelamento e o fluxo completo do painel.
