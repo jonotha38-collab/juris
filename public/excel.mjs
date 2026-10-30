@@ -46,7 +46,7 @@ function sheetXml(sheet) {
   const end = column(sheet.headers.length - 1) + (sheet.rows.length + 1);
   const rows = [sheet.headers, ...sheet.rows].map((row, r) => '<row r="' + (r + 1) + '"' + (r === 0 ? ' ht="32" customHeight="1"' : '') + '>' + row.map((value, c) => {
     const ref = column(c) + (r + 1);
-    const date = r > 0 && sheet.dates.includes(c) && /^\d{4}-\d{2}-\d{2}$/.test(String(value)) && Number.isFinite(Date.parse(value));
+    const date = r > 0 && sheet.dates.includes(c) && /^\d{4}-\d{2}-\d{2}$/.test(String(value)) && Number.isFinite(Date.parse(value)) && new Date(value+'T12:00:00Z').toISOString().slice(0,10)===value;
     const style = r === 0 ? 1 : date ? (r % 2 ? 3 : 5) : (r % 2 ? 2 : 4);
     if (date) return `<c r="${ref}" s="${style}"><v>${(Date.parse(value + 'T00:00:00Z') - Date.UTC(1899, 11, 30)) / 86400000}</v></c>`;
     if (typeof value === 'number' && Number.isFinite(value)) return `<c r="${ref}" s="${style}"><v>${value}</v></c>`;
@@ -75,15 +75,24 @@ function zip(entries) {
   e.setUint32(0, 0x06054b50, true); e.setUint16(8, entries.length, true); e.setUint16(10, entries.length, true); e.setUint32(12, size, true); e.setUint32(16, offset, true);
   return new Blob([...chunks, ...central, end], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 }
-export function createExcel(items) {
-  const sheets = buildReport(items);
+export function createExcel(items) { return createWorkbook(buildReport(items)); }
+export function createWorkbook(inputSheets) {
+  if(!Array.isArray(inputSheets)||!inputSheets.length||inputSheets.length>500)throw new Error('Informe de 1 a 500 abas para o Excel.');
+  const used=new Set();
+  const sheets=inputSheets.map((sheet,index)=>{
+    const base=String(sheet.name||'Aba '+(index+1)).replace(/[\\/?*\[\]:\u0000-\u001F]/g,' ').replace(/^'+|'+$/g,'').trim()||'Aba';
+    let name=base.slice(0,31),suffix=1;
+    while(used.has(name.toLocaleLowerCase('pt-BR'))){const tail=' ('+(++suffix)+')';name=base.slice(0,31-tail.length)+tail;}
+    used.add(name.toLocaleLowerCase('pt-BR'));return {...sheet,name};
+  });
   const entries = [
     ['[Content_Types].xml', declaration + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`],
     ['_rels/.rels', declaration + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
     ['xl/workbook.xml', declaration + `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((s, i) => `<sheet name="${xml(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets></workbook>`],
-    ['xl/_rels/workbook.xml.rels', declaration + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ['xl/_rels/workbook.xml.rels', declaration + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
     ['xl/styles.xml', styles],
     ...sheets.map((sheet, i) => [`xl/worksheets/sheet${i + 1}.xml`, sheetXml(sheet)])
   ];
   return zip(entries);
 }
+

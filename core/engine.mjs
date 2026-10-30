@@ -10,6 +10,7 @@ import {createCollaboration,ADMIN,permissionsFor} from './collaboration.mjs';
 import {createClients} from './clients.mjs';
 import {createDeadlineReviews} from './deadlines.mjs';
 import {createAI} from './ai.mjs';
+import {createReports} from './reports.mjs';
 const now=()=>new Date().toISOString();
 export const day=(value=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(value);
 export function addDays(d,n){const t=new Date(d+'T12:00:00Z');t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10);}
@@ -155,12 +156,14 @@ async function activity(owner,url){
   return {window:w,rows:await attachMeta(rows.map(withParties),owner),timeline,totals,metric:'Publicações não canceladas capturadas no DJEN. Não representa todas as movimentações do tribunal.'};
 }
 const clientsFor=owner=>createClients(db,{owner,actor,resolveScope:url=>scope(owner,url),resolveCaseScope:url=>scope(owner,url,false,true)});
+const reportsFor=owner=>createReports(db,{owner,actor,resolveScope:url=>scope(owner,url,true,true),decorate:rows=>attachMeta(rows,owner)});
 const aiFor=owner=>createAI(db,{owner,actor,env:aiEnv,fetcher,resolveScope:url=>scope(owner,url,false,true,false)});
 const deadlinesFor=owner=>createDeadlineReviews(db,{owner,actor,resolveScope:url=>scope(owner,url,false,false,false)});
 const collaborationFor=owner=>createCollaboration(db,{owner,actor,mode,resolveScope:url=>scope(owner,url,false,true,false),sourceForTask:id=>deadlinesFor(owner).taskSource(id),aiSourceForTask:id=>aiFor(owner).taskSource(id)});
 async function handle(request,owner){
   const url=new URL(request.url),path=url.pathname.replace(/^\/api\/?/,'').split('/').filter(Boolean).map(decodeURIComponent),method=request.method;let body={};
   if(!['GET','HEAD'].includes(method)){if(request.headers.get('origin')&&request.headers.get('origin')!==url.origin)throw new AppError('Origem não autorizada.',403);const raw=await request.text();if(raw.length>2000000)throw new AppError('Arquivo muito grande. Importe até 2 MB por lote.',413);try{body=JSON.parse(raw||'{}');}catch{throw new AppError('JSON inválido.');}if(!body||typeof body!=='object'||Array.isArray(body))throw new AppError('Informe um objeto JSON válido.');}
+  const reportResult=await reportsFor(owner).handle(path,method,url);if(reportResult!==undefined)return reportResult;
   const aiResult=await aiFor(owner).handle(path,method,body,url);if(aiResult!==undefined)return aiResult;
   const deadlineResult=await deadlinesFor(owner).handle(path,method,body,url);if(deadlineResult!==undefined)return deadlineResult;
   const clientsResult=await clientsFor(owner).handle(path,method,body,url);if(clientsResult!==undefined)return clientsResult;
@@ -235,3 +238,4 @@ async function handle(request,owner){
 
 async function tick(){const active=await all("SELECT id,owner FROM jobs WHERE status='running' AND retry_at<=? AND locked_until<? ORDER BY updated LIMIT 1",Date.now(),Date.now());if(active.length){const result=await step(active[0].owner,active[0].id);return {worked:true,job:result};}const due=await all('SELECT * FROM monitors WHERE enabled=1 AND next_run<=? ORDER BY next_run LIMIT 1',now());if(due.length){const m=due[0];const latest=await first('SELECT status FROM jobs WHERE monitor_id=? ORDER BY created DESC LIMIT 1',m.id);if(latest?.status==='error'){await run('UPDATE monitors SET next_run=? WHERE id=?',new Date(Date.now()+6*3600000).toISOString(),m.id);return {worked:true};}const job=await start(m.owner,{oab:m.oab,uf:m.uf,start:addDays(day(),-7),end:day()});return {worked:true,job};}return {worked:false};}
 return {handle,tick,step,start,saveItems,aiTick:(owner='office')=>aiFor(owner).tick()};}
+
